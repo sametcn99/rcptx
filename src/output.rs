@@ -207,7 +207,7 @@ impl OutputSink {
                     if show_banner {
                         writeln!(
                             writer,
-                            "smtp-probe {} — {} domain(s), table report",
+                            "rcptx {} — {} domain(s), table report",
                             env!("CARGO_PKG_VERSION"),
                             reports.len()
                         )?;
@@ -656,7 +656,7 @@ mod tests {
 
     fn temp_path(extension: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "smtp-probe-test-out-{}.{}",
+            "rcptx-test-out-{}.{}",
             uuid::Uuid::new_v4().simple(),
             extension
         ))

@@ -45,32 +45,32 @@ jobs:
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
         run: |
-          stage="smtp-probe-${{ matrix.target }}"
+          stage="rcptx-${{ matrix.target }}"
           mkdir -p "$stage"
-          cp "target/${{ matrix.target }}/release/smtp-probe" "$stage/"
-          strip "$stage/smtp-probe" || true
+          cp "target/${{ matrix.target }}/release/rcptx" "$stage/"
+          strip "$stage/rcptx" || true
           cp README.md LICENSE-MIT LICENSE-APACHE "$stage/"
-          tar -czf "smtp-probe-${{ matrix.target }}.tar.gz" "$stage"
-          sha256sum "smtp-probe-${{ matrix.target }}.tar.gz" > "smtp-probe-${{ matrix.target }}.tar.gz.sha256"
+          tar -czf "rcptx-${{ matrix.target }}.tar.gz" "$stage"
+          sha256sum "rcptx-${{ matrix.target }}.tar.gz" > "rcptx-${{ matrix.target }}.tar.gz.sha256"
 
       - name: Package (Windows)
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
-          $stage = "smtp-probe-${{ matrix.target }}"
+          $stage = "rcptx-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/smtp-probe.exe" $stage
+          Copy-Item "target/${{ matrix.target }}/release/rcptx.exe" $stage
           Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE $stage
-          Compress-Archive -Path $stage -DestinationPath "smtp-probe-${{ matrix.target }}.zip" -Force
-          $hash = (Get-FileHash "smtp-probe-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLower()
-          "$hash  smtp-probe-${{ matrix.target }}.zip" | Out-File -Encoding ascii "smtp-probe-${{ matrix.target }}.zip.sha256"
+          Compress-Archive -Path $stage -DestinationPath "rcptx-${{ matrix.target }}.zip" -Force
+          $hash = (Get-FileHash "rcptx-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  rcptx-${{ matrix.target }}.zip" | Out-File -Encoding ascii "rcptx-${{ matrix.target }}.zip.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: smtp-probe-${{ matrix.target }}
+          name: rcptx-${{ matrix.target }}
           path: |
-            smtp-probe-${{ matrix.target }}.${{ matrix.archive }}
-            smtp-probe-${{ matrix.target }}.${{ matrix.archive }}.sha256
+            rcptx-${{ matrix.target }}.${{ matrix.archive }}
+            rcptx-${{ matrix.target }}.${{ matrix.archive }}.sha256
 
   release:
     name: Publish release
@@ -93,7 +93,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            dist/smtp-probe-*.tar.gz
-            dist/smtp-probe-*.tar.gz.sha256
-            dist/smtp-probe-*.zip
-            dist/smtp-probe-*.zip.sha256
+            dist/rcptx-*.tar.gz
+            dist/rcptx-*.tar.gz.sha256
+            dist/rcptx-*.zip
+            dist/rcptx-*.zip.sha256

@@ -16,7 +16,7 @@ use crate::smtp::StarttlsMode;
 /// Smart asynchronous SMTP reconnaissance: probe recipient validity, MX
 /// posture and catch-all behaviour without sending email.
 #[derive(Parser, Debug)]
-#[command(name = "smtp-probe", version, about, long_about = None)]
+#[command(name = "rcptx", version, about, long_about = None)]
 pub struct Cli {
     /// Subcommand (optional). Default behaviour is the full probe.
     #[command(subcommand)]
@@ -26,7 +26,7 @@ pub struct Cli {
     // Target & input
     // -----------------------------------------------------------------
     /// Single target domain (e.g. example.com). May be given per-env.
-    #[arg(short, long, value_name = "DOMAIN", env = "SMTP_PROBE_DOMAIN")]
+    #[arg(short, long, value_name = "DOMAIN", env = "rcptx_DOMAIN")]
     pub domain: Option<String>,
 
     /// File with target domains or email addresses, one per line ('#' comments allowed).
@@ -62,7 +62,7 @@ pub struct Cli {
         long,
         value_name = "EMAIL",
         default_value = "probe@example.com",
-        env = "SMTP_PROBE_MAIL_FROM"
+        env = "rcptx_MAIL_FROM"
     )]
     pub mail_from: String,
 
@@ -103,7 +103,7 @@ pub struct Cli {
     pub insecure: bool,
 
     /// Custom DNS resolver IP (e.g. 1.1.1.1, 8.8.8.8); default: system. May be given per-env.
-    #[arg(long, value_name = "IP", env = "SMTP_PROBE_DNS_SERVER", global = true)]
+    #[arg(long, value_name = "IP", env = "rcptx_DNS_SERVER", global = true)]
     pub dns_server: Option<IpAddr>,
 
     // -----------------------------------------------------------------
@@ -420,7 +420,7 @@ fn system_hostname() -> String {
     std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
         .map(|h| h.to_lowercase())
-        .unwrap_or_else(|_| "smtp-probe.local".to_string())
+        .unwrap_or_else(|_| "rcptx.local".to_string())
 }
 
 fn sanitize_hostname(raw: &str) -> String {
@@ -435,7 +435,7 @@ fn sanitize_hostname(raw: &str) -> String {
         })
         .collect();
     if cleaned.is_empty() {
-        "smtp-probe.local".to_string()
+        "rcptx.local".to_string()
     } else {
         cleaned
     }
@@ -503,7 +503,7 @@ mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Cli {
-        Cli::try_parse_from(std::iter::once("smtp-probe").chain(args.iter().copied()))
+        Cli::try_parse_from(std::iter::once("rcptx").chain(args.iter().copied()))
             .expect("cli parses")
     }
 
@@ -593,7 +593,7 @@ mod tests {
         // Case is preserved for user-provided EHLO names; the system hostname
         // is lower-cased separately in system_hostname().
         assert_eq!(sanitize_hostname("LAPTOP 01\n"), "LAPTOP-01-");
-        assert_eq!(sanitize_hostname(""), "smtp-probe.local");
+        assert_eq!(sanitize_hostname(""), "rcptx.local");
         assert_eq!(sanitize_hostname("probe.example.com"), "probe.example.com");
     }
 
@@ -611,11 +611,11 @@ mod tests {
     fn resolve_reads_files_and_merges_candidates() {
         let dir = std::env::temp_dir();
         let domains_file = dir.join(format!(
-            "smtp-probe-test-domains-{}",
+            "rcptx-test-domains-{}",
             uuid::Uuid::new_v4().simple()
         ));
         let wordlist = dir.join(format!(
-            "smtp-probe-test-words-{}",
+            "rcptx-test-words-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&domains_file, "# targets\nExample.COM\nhr@corp.example\n\n").unwrap();

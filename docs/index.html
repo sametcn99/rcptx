@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>smtp-probe — smart SMTP reconnaissance &amp; deliverability probing</title>
+    <title>rcptx — smart SMTP reconnaissance &amp; deliverability probing</title>
     <meta
       name="description"
-      content="smtp-probe is a smart, asynchronous SMTP reconnaissance CLI: probe recipient validity, MX posture and catch-all behaviour without sending a single email."
+      content="rcptx is a smart, asynchronous SMTP reconnaissance CLI: probe recipient validity, MX posture and catch-all behaviour without sending a single email."
     />
     <link
       rel="icon"
@@ -494,7 +494,7 @@
           <rect x="20" y="30" width="60" height="40" rx="6" stroke="#38bdf8" stroke-width="8" fill="none" />
           <path d="M20 32l30 22 30-22" stroke="#38bdf8" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-        smtp-probe
+        rcptx
       </a>
       <div class="links">
         <a href="#features">Features</a>
@@ -507,7 +507,7 @@
     </nav>
 
     <header class="hero wrap" id="top">
-      <h1>smtp-probe</h1>
+      <h1>rcptx</h1>
       <p class="tag">
         Smart, asynchronous SMTP reconnaissance &amp; deliverability probing — verify recipients, map MX posture and detect catch-all servers
         <strong>without sending a single email</strong>.
@@ -536,9 +536,9 @@
       </div>
       <p class="platforms">Windows · Linux · macOS — single static binary, no C toolchain required</p>
 
-      <div class="term" role="img" aria-label="Example smtp-probe session">
+      <div class="term" role="img" aria-label="Example rcptx session">
         <div class="term-bar"><i></i><i></i><i></i></div>
-        <pre><span class="t-dim">$</span> <span class="t-cmd">smtp-probe -d acme.com</span>
+        <pre><span class="t-dim">$</span> <span class="t-cmd">rcptx -d acme.com</span>
 <span class="t-dim"> acme.com
 ──────────────────────────────────────────────────────────────────
   MX        10 aspmx.l.google.com  |  20 alt1.aspmx.l.google.com
@@ -725,26 +725,26 @@
 
       <section class="wrap" id="usage">
         <h2>Usage</h2>
-        <p class="lead">A few practical recipes. Full reference with <code>smtp-probe --help</code>.</p>
+        <p class="lead">A few practical recipes. Full reference with <code>rcptx --help</code>.</p>
 
         <div class="term">
           <div class="term-bar"><i></i><i></i><i></i></div>
           <pre><span class="t-dim"># HR + executive hunt across a domain list, JSON report of hits only</span>
-<span class="t-dim">$</span> <span class="t-cmd">smtp-probe -D targets.txt -p hr,executive --only-accepted --format json -o hits.json</span>
+<span class="t-dim">$</span> <span class="t-cmd">rcptx -D targets.txt -p hr,executive --only-accepted --format json -o hits.json</span>
 
 <span class="t-dim"># Stream accepted addresses as CSV, plausible random sender, custom resolver</span>
-<span class="t-dim">$</span> <span class="t-cmd">cat domains.txt | smtp-probe --stdin -l careers,people,ceo \
+<span class="t-dim">$</span> <span class="t-cmd">cat domains.txt | rcptx --stdin -l careers,people,ceo \
     --auto-mail-from --dns-server 1.1.1.1 --format csv</span>
 
 <span class="t-dim"># Cautious scan of a hardened target: slow pacing, no catch-all waste, greylist retries</span>
-<span class="t-dim">$</span> <span class="t-cmd">smtp-probe -d strict-corp.com -p all -c 1 --delay-ms 2000 --jitter-ms 800 \
+<span class="t-dim">$</span> <span class="t-cmd">rcptx -d strict-corp.com -p all -c 1 --delay-ms 2000 --jitter-ms 800 \
     --max-rcpt-per-conn 3 --stop-on-catch-all --retry-greylist 2 --retry-delay 30</span>
 
 <span class="t-dim"># DNS-only posture check — zero SMTP traffic</span>
-<span class="t-dim">$</span> <span class="t-cmd">smtp-probe mx example.com --format json</span>
+<span class="t-dim">$</span> <span class="t-cmd">rcptx mx example.com --format json</span>
 
 <span class="t-dim"># Check for a newer release (also available as --check-update before any run)</span>
-<span class="t-dim">$</span> <span class="t-cmd">smtp-probe check-update</span></pre>
+<span class="t-dim">$</span> <span class="t-cmd">rcptx check-update</span></pre>
         </div>
 
         <p class="lead" style="margin-top: 1.6rem">
@@ -757,17 +757,17 @@
         <h2>Download</h2>
         <p class="lead">Static release binaries with SHA-256 checksums for every platform, published by CI on every tag.</p>
         <div class="dl-grid">
-          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/smtp-probe-x86_64-unknown-linux-gnu.tar.gz">
-            <b>🐧 Linux</b><span>x86_64 · glibc</span><span class="file">smtp-probe-x86_64-unknown-linux-gnu.tar.gz</span>
+          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-unknown-linux-gnu.tar.gz">
+            <b>🐧 Linux</b><span>x86_64 · glibc</span><span class="file">rcptx-x86_64-unknown-linux-gnu.tar.gz</span>
           </a>
-          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/smtp-probe-aarch64-apple-darwin.tar.gz">
-            <b>🍎 macOS</b><span>Apple Silicon (M1/M2/M3/M4)</span><span class="file">smtp-probe-aarch64-apple-darwin.tar.gz</span>
+          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-aarch64-apple-darwin.tar.gz">
+            <b>🍎 macOS</b><span>Apple Silicon (M1/M2/M3/M4)</span><span class="file">rcptx-aarch64-apple-darwin.tar.gz</span>
           </a>
-          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/smtp-probe-x86_64-apple-darwin.tar.gz">
-            <b>🍎 macOS</b><span>Intel</span><span class="file">smtp-probe-x86_64-apple-darwin.tar.gz</span>
+          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-apple-darwin.tar.gz">
+            <b>🍎 macOS</b><span>Intel</span><span class="file">rcptx-x86_64-apple-darwin.tar.gz</span>
           </a>
-          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/smtp-probe-x86_64-pc-windows-msvc.zip">
-            <b>🪟 Windows</b><span>x64</span><span class="file">smtp-probe-x86_64-pc-windows-msvc.zip</span>
+          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-pc-windows-msvc.zip">
+            <b>🪟 Windows</b><span>x64</span><span class="file">rcptx-x86_64-pc-windows-msvc.zip</span>
           </a>
         </div>
         <p class="lead" style="margin-top: 1.6rem">Or install with cargo:</p>
@@ -785,7 +785,7 @@
     <footer>
       <div class="wrap" style="display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center">
         <div>
-          <strong style="color: var(--text)">smtp-probe</strong> — built with <span class="heart">♥</span> in Rust by
+          <strong style="color: var(--text)">rcptx</strong> — built with <span class="heart">♥</span> in Rust by
           <a href="https://github.com/sametcn99">sametcn99</a> · MIT
         </div>
         <div style="margin-left: auto; display: flex; gap: 1rem; flex-wrap: wrap">

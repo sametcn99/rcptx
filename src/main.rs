@@ -1,5 +1,5 @@
-//! `smtp-probe` binary — argument parsing, progress/logging setup, signal
-//! handling and exit-code policy. All real work lives in the `smtp_probe`
+//! `rcptx` binary — argument parsing, progress/logging setup, signal
+//! handling and exit-code policy. All real work lives in the `rcptx`
 //! library crate so it stays integration-testable.
 
 #![forbid(unsafe_code)]
@@ -12,11 +12,11 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use clap::Parser;
 use indicatif::MultiProgress;
-use smtp_probe::cli::{Cli, Command};
-use smtp_probe::dns;
-use smtp_probe::output::{self, OutputSink, RunSummary, write_mx_report};
-use smtp_probe::scanner;
-use smtp_probe::update::{self, UpdateInfo};
+use rcptx::cli::{Cli, Command};
+use rcptx::dns;
+use rcptx::output::{self, OutputSink, RunSummary, write_mx_report};
+use rcptx::scanner;
+use rcptx::update::{self, UpdateInfo};
 use tracing_subscriber::EnvFilter;
 
 fn main() -> ExitCode {
@@ -68,7 +68,7 @@ async fn run(cli: Cli) -> Result<ExitCode> {
         match update::check_for_update(Duration::from_secs(8)).await {
             Ok(info) if info.update_available => eprintln!("{}", format_update_notice(&info)),
             Ok(info) if !quiet => eprintln!(
-                "smtp-probe {} is up to date (latest release: {})",
+                "rcptx {} is up to date (latest release: {})",
                 update::CURRENT_VERSION,
                 info.latest
             ),
@@ -165,7 +165,7 @@ async fn run_probe(cli: &Cli) -> Result<ExitCode> {
     if !quiet {
         let summary = RunSummary::from_reports(&outcome.reports, started.elapsed());
         eprintln!(
-            "smtp-probe finished: {} domain(s), {} probe(s) in {:.1}s",
+            "rcptx finished: {} domain(s), {} probe(s) in {:.1}s",
             summary.domains, summary.probes, summary.elapsed_secs
         );
     }
@@ -234,7 +234,7 @@ fn init_tracing(verbose: u8, quiet: bool) {
         match verbose {
             0 => "warn".to_string(),
             // -v keeps logs at warn but reveals the raw SMTP transcript.
-            1 => "warn,smtp_probe::transcript=debug".to_string(),
+            1 => "warn,rcptx::transcript=debug".to_string(),
             2 => "debug".to_string(),
             _ => "trace".to_string(),
         }

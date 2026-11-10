@@ -1,4 +1,4 @@
-//! `smtp-probe` — smart asynchronous SMTP reconnaissance & deliverability
+//! `rcptx` — smart asynchronous SMTP reconnaissance & deliverability
 //! probing as a library.
 //!
 //! The binary in `src/main.rs` is a thin wrapper around these modules:

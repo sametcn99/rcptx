@@ -22,7 +22,7 @@ use crate::smtp::StarttlsMode;
 use crate::smtp::parser::{self, ParseError, SmtpReply};
 
 /// Tracing target used for raw SMTP transcript lines (shown with `-v`).
-pub const TRANSCRIPT_TARGET: &str = "smtp_probe::transcript";
+pub const TRANSCRIPT_TARGET: &str = "rcptx::transcript";
 
 static CONN_SEQ: AtomicU64 = AtomicU64::new(1);
 

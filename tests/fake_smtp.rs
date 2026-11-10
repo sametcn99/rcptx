@@ -7,10 +7,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use smtp_probe::cli::ResolvedConfig;
-use smtp_probe::output::Format;
-use smtp_probe::scanner::{self, ProbeResult, ProbeStatus, ScanOutcome};
-use smtp_probe::smtp::StarttlsMode;
+use rcptx::cli::ResolvedConfig;
+use rcptx::output::Format;
+use rcptx::scanner::{self, ProbeResult, ProbeStatus, ScanOutcome};
+use rcptx::smtp::StarttlsMode;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -61,7 +61,7 @@ async fn handle_connection(stream: TcpStream, mode: ServerMode, state: Arc<Mutex
 
     let mut stream = stream;
     let _ = stream
-        .write_all(b"220 fake.local ESMTP smtp-probe integration test\r\n")
+        .write_all(b"220 fake.local ESMTP rcptx integration test\r\n")
         .await;
     let (read_half, mut write_half) = stream.split();
     let mut lines = BufReader::new(read_half).lines();

@@ -1,6 +1,6 @@
 //! Update checks against GitHub Releases.
 //!
-//! `smtp-probe check-update` (or the `--check-update` flag) asks the GitHub
+//! `rcptx check-update` (or the `--check-update` flag) asks the GitHub
 //! API for the latest release of [`GITHUB_REPO`] and compares it with the
 //! running version. The HTTPS request reuses the crate's pure-Rust rustls
 //! stack — no extra HTTP client dependency.
@@ -29,7 +29,7 @@ const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// User agent sent to the GitHub API (it rejects requests without one).
-pub const USER_AGENT: &str = concat!("smtp-probe/", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = concat!("rcptx/", env!("CARGO_PKG_VERSION"));
 
 /// Outcome of an update check.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn user_agent_contains_version() {
-        assert!(USER_AGENT.starts_with("smtp-probe/"));
+        assert!(USER_AGENT.starts_with("rcptx/"));
         assert!(USER_AGENT.ends_with(CURRENT_VERSION));
     }
 }

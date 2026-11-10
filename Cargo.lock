@@ -1338,6 +1338,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
 
 [[package]]
+name = "rcptx"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "comfy-table",
+ "console",
+ "csv",
+ "futures",
+ "hickory-resolver",
+ "indicatif",
+ "owo-colors",
+ "rand",
+ "rustls",
+ "rustls-rustcrypto",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1646,33 +1673,6 @@ name = "smallvec"
 version = "1.16.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "149309498a5f7334b12ddae0cad8aba81ce785fe91755068867e017cf98fee46"
-
-[[package]]
-name = "smtp-probe"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "comfy-table",
- "console",
- "csv",
- "futures",
- "hickory-resolver",
- "indicatif",
- "owo-colors",
- "rand",
- "rustls",
- "rustls-rustcrypto",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tokio-rustls",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "webpki-roots 0.26.11",
-]
 
 [[package]]
 name = "socket2"

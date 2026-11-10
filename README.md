@@ -1,6 +1,6 @@
 <div align="center">
 
-# smtp-probe
+# rcptx
 
 **Smart, asynchronous SMTP reconnaissance & deliverability probing — without sending a single email.**
 
@@ -15,14 +15,14 @@
 
 ---
 
-`smtp-probe` probes recipient validity, MX posture and catch-all behaviour
+`rcptx` probes recipient validity, MX posture and catch-all behaviour
 using the SMTP protocol itself (`EHLO` → `STARTTLS` → `MAIL FROM` →
 `RCPT TO` → `RSET`). It classifies each candidate from the 3-digit reply code
 **and** RFC 3463 enhanced status codes, reuses sessions intelligently, and
 plays nice with greylisting, tarpits and anti-enumeration defences.
 
 ```text
-$ smtp-probe -d acme.com
+$ rcptx -d acme.com
 
  acme.com
 ──────────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ Summary: 22 probe(s) across 1 domain(s) — 3 accepted · 0 catch-all* · 19 rej
 - **Four output formats**: human `table`, `json` document, streaming `jsonl`
   and `csv`; `--only-accepted` filter; `--output <FILE>`; progress bars that
   auto-hide when piping or when writing machine formats.
-- **Update checks** straight from GitHub Releases: `smtp-probe check-update`
+- **Update checks** straight from GitHub Releases: `rcptx check-update`
   or `--check-update` (see [Update checks](#update-checks)).
 - **77 automated tests**, including an in-process scripted SMTP server that
   exercises session reuse, reconnect-resume, catch-all logic and greylist
@@ -99,10 +99,10 @@ Download from the [latest release](https://github.com/sametcn99/rcptx/releases/l
 
 | Platform              | File                                         |
 | --------------------- | -------------------------------------------- |
-| Linux (x86_64)        | `smtp-probe-x86_64-unknown-linux-gnu.tar.gz` |
-| macOS (Apple Silicon) | `smtp-probe-aarch64-apple-darwin.tar.gz`     |
-| macOS (Intel)         | `smtp-probe-x86_64-apple-darwin.tar.gz`      |
-| Windows (x64)         | `smtp-probe-x86_64-pc-windows-msvc.zip`      |
+| Linux (x86_64)        | `rcptx-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS (Apple Silicon) | `rcptx-aarch64-apple-darwin.tar.gz`     |
+| macOS (Intel)         | `rcptx-x86_64-apple-darwin.tar.gz`      |
+| Windows (x64)         | `rcptx-x86_64-pc-windows-msvc.zip`      |
 
 Each archive carries a matching `.sha256` checksum.
 
@@ -122,24 +122,24 @@ cargo build --release
 
 ```sh
 # 1. Probe a domain with the default presets (hr, general), live progress
-smtp-probe -d example.com
+rcptx -d example.com
 
 # 2. HR + executive hunt on several domains from a file, JSON report, keep only hits
-smtp-probe -D targets.txt -p hr,executive --only-accepted --format json -o hits.json
+rcptx -D targets.txt -p hr,executive --only-accepted --format json -o hits.json
 
 # 3. Stream accepted addresses as CSV while probing, custom sender + resolver
-cat domains.txt | smtp-probe --stdin -l careers,people,ceo \
+cat domains.txt | rcptx --stdin -l careers,people,ceo \
     --auto-mail-from --dns-server 1.1.1.1 --format csv
 
 # 4. Slow, cautious scan of a well-defended domain (no catch-all waste, greylist retries)
-smtp-probe -d strict-corp.com -p all -c 1 --delay-ms 2000 --jitter-ms 800 \
+rcptx -d strict-corp.com -p all -c 1 --delay-ms 2000 --jitter-ms 800 \
     --max-rcpt-per-conn 3 --stop-on-catch-all --retry-greylist 2 --retry-delay 30
 
 # 5. DNS-only posture check (no SMTP traffic at all)
-smtp-probe mx example.com --format json
+rcptx mx example.com --format json
 
 # 6. Debugging: -v prints the raw SMTP transcript (>>> MAIL FROM, <<< 250 ...)
-smtp-probe -d example.com -l info --catch-all-probes 1 -v
+rcptx -d example.com -l info --catch-all-probes 1 -v
 ```
 
 ### Key flags
@@ -163,7 +163,7 @@ smtp-probe -d example.com -l info --catch-all-probes 1 -v
 | `--format` / `-o, --output` / `--only-accepted`         | `table` / stdout / off | Output control                                                                            |
 | `-q, --quiet` / `-v, --verbose`                         | off / 0                | Noise control; `-v` shows the SMTP transcript                                             |
 
-Run `smtp-probe --help` for the full reference.
+Run `rcptx --help` for the full reference.
 
 ## Output verdicts
 
@@ -192,15 +192,15 @@ Run `smtp-probe --help` for the full reference.
 
 ## Update checks
 
-`smtp-probe` can compare its version against the
+`rcptx` can compare its version against the
 [GitHub releases](https://github.com/sametcn99/rcptx/releases) of this repository:
 
 ```sh
 # Standalone check
-smtp-probe check-update
+rcptx check-update
 
 # Or before any run (non-fatal — a flaky network never stops a scan)
-smtp-probe -d example.com --check-update
+rcptx -d example.com --check-update
 ```
 
 ## Exit codes
