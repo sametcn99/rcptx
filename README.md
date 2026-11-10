@@ -42,6 +42,39 @@ $ rcptx -d acme.com
 Summary: 22 probe(s) across 1 domain(s) — 3 accepted · 0 catch-all* · 19 rejected …
 ```
 
+`rcptx providers` lists the built-in fingerprint table used for that provider
+guess — and `rcptx mx <domain> -v` prints exactly which needle matched:
+
+```text
+$ rcptx providers
+
+ Provider fingerprints (55)
+───────────────────────────────────────────────────────────────────────────────
+┌─────────────┬────────────────────────┬──────────────────────────────────────┐
+│ Category    ┆ Needle                 ┆ Provider                             ┆
+╞═════════════╪════════════════════════╪══════════════════════════════════════╡
+│ gateway     ┆ ppe-hosted.com         ┆ Proofpoint                           ┆
+│ gateway     ┆ cudamail.com           ┆ Barracuda Email Security             ┆
+│ gateway     ┆ iphmx.com              ┆ Cisco Email Security (IronPort)      ┆
+│ gateway     ┆ spamd.one              ┆ Sophos Email                         ┆
+│ gateway     ┆ abnormal.ai            ┆ Abnormal Security                    ┆
+│ cloud suite ┆ protection.outlook.com ┆ Microsoft 365 / Exchange Online      ┆
+│ cloud suite ┆ google.com             ┆ Google Workspace                     ┆
+│ cloud suite ┆ zoho                   ┆ Zoho Mail                            ┆
+│ hosting     ┆ messagingengine.com    ┆ Fastmail                             ┆
+│ hosting     ┆ emailsrvr.com          ┆ Rackspace Email                      ┆
+│ forwarding  ┆ mx.cloudflare.net      ┆ Cloudflare Email Routing             ┆
+│ …           ┆ …                      ┆ …                                    ┆
+└─────────────┴────────────────────────┴──────────────────────────────────────┘
+
+$ rcptx mx fastmail.com -v
+
+ MX recon: fastmail.com
+───────────────────────────────────────────────────────────────────────────────
+  Provider  Fastmail
+  Matched   needle "messagingengine.com" matched MX host in1-smtp.messagingengine.com
+```
+
 ## Contents
 
 - [Features](#features)
