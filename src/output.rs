@@ -12,7 +12,7 @@ use comfy_table::{Cell, Color, ContentArrangement, Table, presets::UTF8_FULL};
 use owo_colors::OwoColorize;
 use serde::Serialize;
 
-use crate::dns::{DomainSecurity, MxEntry};
+use crate::dns::{DomainSecurity, MxEntry, ProviderFingerprint};
 use crate::scanner::{DomainReport, ProbeResult, ProbeStatus};
 
 /// Output format selector (clap `ValueEnum` + internal dispatch).
@@ -493,6 +493,10 @@ pub struct MxReport<'a> {
     pub security: &'a DomainSecurity,
     /// Inferred provider, when recognized.
     pub provider: Option<&'a str>,
+    /// Provenance of the provider guess (which needle matched where).
+    pub provider_match: Option<&'a str>,
+    /// Show the provenance line (`-v`).
+    pub verbose: bool,
     /// Output format.
     pub format: Format,
     /// ANSI color for terminal table output.
@@ -512,6 +516,8 @@ pub fn write_mx_report(writer: &mut dyn Write, report: &MxReport<'_>) -> Result<
         mx,
         security,
         provider,
+        provider_match,
+        verbose,
         format,
         color,
         width,
@@ -522,6 +528,7 @@ pub fn write_mx_report(writer: &mut dyn Write, report: &MxReport<'_>) -> Result<
             struct MxDoc<'a> {
                 domain: &'a str,
                 provider: Option<&'a str>,
+                provider_match: Option<&'a str>,
                 spf: Option<&'a str>,
                 dmarc: Option<&'a str>,
                 mx: &'a [MxEntry],
@@ -529,6 +536,7 @@ pub fn write_mx_report(writer: &mut dyn Write, report: &MxReport<'_>) -> Result<
             let doc = MxDoc {
                 domain,
                 provider,
+                provider_match,
                 spf: security.spf.as_deref(),
                 dmarc: security.dmarc.as_deref(),
                 mx,
@@ -576,6 +584,12 @@ pub fn write_mx_report(writer: &mut dyn Write, report: &MxReport<'_>) -> Result<
                 provider.unwrap_or("(unrecognized)"),
                 color,
             )?;
+            if verbose {
+                let detail = provider_match.unwrap_or(
+                    "no fingerprint matched — run `rcptx providers` to inspect the table",
+                );
+                write_kv(writer, "Matched", detail, color)?;
+            }
             write_kv(
                 writer,
                 "SPF",
@@ -615,6 +629,64 @@ pub fn write_mx_report(writer: &mut dyn Write, report: &MxReport<'_>) -> Result<
     Ok(())
 }
 
+/// Write the built-in provider fingerprint table (`rcptx providers`).
+///
+/// # Errors
+///
+/// Returns an error when the underlying writer fails.
+pub fn write_provider_list(
+    writer: &mut dyn Write,
+    fingerprints: &[ProviderFingerprint],
+    format: Format,
+    color: bool,
+    width: u16,
+) -> Result<()> {
+    match format {
+        Format::Json => {
+            writeln!(writer, "{}", serde_json::to_string_pretty(fingerprints)?)?;
+        }
+        Format::Jsonl => {
+            for fingerprint in fingerprints {
+                writeln!(writer, "{}", serde_json::to_string(fingerprint)?)?;
+            }
+        }
+        Format::Csv => {
+            let mut csv_writer = csv::Writer::from_writer(writer);
+            for fingerprint in fingerprints {
+                csv_writer.serialize(fingerprint)?;
+            }
+            csv_writer.flush()?;
+        }
+        Format::Table => {
+            writeln!(
+                writer,
+                "{}",
+                paint_if(
+                    color,
+                    &format!(" Provider fingerprints ({}) ", fingerprints.len()),
+                    |t| t.bold().to_string()
+                )
+            )?;
+            writeln!(writer, "{}", "─".repeat(usize::from(width.min(100))))?;
+            let mut table = Table::new();
+            table
+                .load_preset(UTF8_FULL)
+                .set_content_arrangement(ContentArrangement::Dynamic)
+                .set_width(width.max(50));
+            table.set_header(vec!["Category", "Needle", "Provider"]);
+            for fingerprint in fingerprints {
+                table.add_row(vec![
+                    Cell::new(fingerprint.category),
+                    Cell::new(fingerprint.needle),
+                    Cell::new(fingerprint.provider),
+                ]);
+            }
+            writeln!(writer, "{table}")?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -644,6 +716,9 @@ mod tests {
                 exchange: "mx.example.com".to_string(),
             }],
             provider: Some("Google Workspace".to_string()),
+            provider_match: Some(
+                r#"needle "google.com" matched MX host mx.example.com"#.to_string(),
+            ),
             spf: Some("v=spf1 -all".to_string()),
             dmarc: None,
             catch_all: Some(false),
@@ -792,5 +867,67 @@ mod tests {
         let results = doc["domains"][0]["results"].as_array().unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0]["status"], "accepted");
+    }
+
+    #[test]
+    fn provider_list_writes_every_fingerprint() {
+        let mut buffer: Vec<u8> = Vec::new();
+        write_provider_list(
+            &mut buffer,
+            crate::dns::PROVIDER_FINGERPRINTS,
+            Format::Json,
+            false,
+            80,
+        )
+        .unwrap();
+        let json = String::from_utf8(buffer).unwrap();
+        // Shadow struct with owned fields: deserializing the real struct's
+        // &'static str fields from an owned buffer is impossible by construction.
+        #[derive(serde::Deserialize)]
+        struct FingerprintRow {
+            category: String,
+            needle: String,
+            provider: String,
+        }
+        let parsed: Vec<FingerprintRow> = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.len(), crate::dns::PROVIDER_FINGERPRINTS.len());
+        assert!(parsed.iter().all(|fp| {
+            !fp.provider.is_empty() && !fp.needle.is_empty() && !fp.category.is_empty()
+        }));
+    }
+
+    #[test]
+    fn provider_list_table_renders() {
+        let mut buffer: Vec<u8> = Vec::new();
+        write_provider_list(
+            &mut buffer,
+            crate::dns::PROVIDER_FINGERPRINTS,
+            Format::Table,
+            false,
+            90,
+        )
+        .unwrap();
+        let rendered = String::from_utf8(buffer).unwrap();
+        assert!(rendered.contains("Needle"));
+        assert!(rendered.contains("google.com"));
+        assert!(rendered.contains("Proofpoint"));
+        assert!(rendered.contains(&format!("({})", crate::dns::PROVIDER_FINGERPRINTS.len())));
+    }
+
+    #[test]
+    fn provider_list_csv_roundtrips() {
+        let mut buffer: Vec<u8> = Vec::new();
+        write_provider_list(
+            &mut buffer,
+            crate::dns::PROVIDER_FINGERPRINTS,
+            Format::Csv,
+            false,
+            80,
+        )
+        .unwrap();
+        let mut reader = csv::Reader::from_reader(&buffer[..]);
+        assert_eq!(reader.headers().unwrap().len(), 3);
+        let rows: Vec<_> = reader.records().collect::<Result<_, _>>().unwrap();
+        assert_eq!(rows.len(), crate::dns::PROVIDER_FINGERPRINTS.len());
     }
 }

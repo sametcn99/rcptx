@@ -183,6 +183,8 @@ pub enum Command {
     },
     /// Check GitHub Releases for a newer version and exit.
     CheckUpdate,
+    /// List the built-in provider fingerprints used for MX/SPF detection.
+    Providers,
 }
 
 /// Fully-resolved runtime configuration handed to the scanner.
@@ -693,11 +695,16 @@ mod tests {
             parse(&["check-update"]).command,
             Some(Command::CheckUpdate)
         ));
+        assert!(matches!(
+            parse(&["providers"]).command,
+            Some(Command::Providers)
+        ));
         assert!(
             parse(&["mx", "example.com", "--format", "json"])
                 .validate()
                 .is_ok()
         );
+        assert!(parse(&["providers", "--format", "csv"]).validate().is_ok());
         assert!(parse(&["-d", "example.com", "--check-update"]).check_update);
         assert_eq!(
             parse(&["-d", "example.com", "--starttls", "required"]).starttls,

@@ -14,7 +14,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::cli::ResolvedConfig;
-use crate::dns::{DnsResolver, MxEntry, detect_provider};
+use crate::dns::{DnsResolver, MxEntry, detect_provider_detail};
 use crate::smtp::client::{ConnectConfig, next_conn_id};
 use crate::smtp::{SmtpConnection, SmtpError, SmtpReply, Stage};
 
@@ -74,6 +74,9 @@ pub struct DomainReport {
     pub mx_records: Vec<MxEntry>,
     /// Inferred receiving platform (Google Workspace, Microsoft 365, …).
     pub provider: Option<String>,
+    /// Provenance of the provider guess: which fingerprint needle matched
+    /// where (`needle "google.com" matched MX host aspmx.l.google.com`).
+    pub provider_match: Option<String>,
     /// `v=spf1` record, when found.
     pub spf: Option<String>,
     /// `v=DMARC1` record, when found.
@@ -203,6 +206,7 @@ async fn scan_domain(
         domain: domain.to_string(),
         mx_records: Vec::new(),
         provider: None,
+        provider_match: None,
         spf: None,
         dmarc: None,
         catch_all: None,
@@ -245,12 +249,18 @@ async fn scan_domain(
         }
     };
     report.mx_records = mx.clone();
-    report.provider = detect_provider(&mx, security.spf.as_deref()).map(str::to_string);
+    let provider_match = detect_provider_detail(&mx, security.spf.as_deref());
+    report.provider = provider_match
+        .as_ref()
+        .map(|matched| matched.name.to_string());
+    report.provider_match = provider_match.as_ref().map(|matched| matched.describe());
     report.spf = security.spf;
     report.dmarc = security.dmarc;
-    if let Some(provider) = &report.provider {
+    if let Some(matched) = &provider_match {
         report.notes.push(format!(
-            "receiving infrastructure looks like {provider} (inferred from MX/SPF)"
+            "receiving infrastructure looks like {} — {}",
+            matched.name,
+            matched.describe()
         ));
     }
 

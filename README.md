@@ -76,7 +76,9 @@ Summary: 22 probe(s) across 1 domain(s) — 3 accepted · 0 catch-all* · 19 rej
   provider guess across 40+ platforms — Google Workspace, Microsoft 365,
   Proofpoint, Mimecast, Barracuda, Abnormal, Check Point (Avanan), Cisco
   IronPort, Sophos, Vade, Trend Micro, Hornetsecurity, Cloudflare, Fastmail,
-  Proton, Rackspace, and more. Custom resolver via `--dns-server`.
+  Proton, Rackspace, and more. Custom resolver via `--dns-server`. Run
+  `rcptx providers` to list every fingerprint; `rcptx mx <domain> -v` prints
+  exactly which needle matched and where.
 - **Greylisting support**: `4xx` replies are retried (`--retry-greylist`,
   `--retry-delay`).
 - **Anti-blocking posture**: `--delay-ms` + `--jitter-ms` jittered pacing,
@@ -143,6 +145,10 @@ rcptx mx example.com --format json
 
 # 6. Debugging: -v prints the raw SMTP transcript (>>> MAIL FROM, <<< 250 ...)
 rcptx -d example.com -l info --catch-all-probes 1 -v
+
+# 7. Provider fingerprints: list the built-in table, see which needle matched
+rcptx providers
+rcptx mx example.com -v
 ```
 
 ### Key flags

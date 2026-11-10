@@ -80,6 +80,7 @@ async fn run(cli: Cli) -> Result<ExitCode> {
     match &cli.command {
         Some(Command::Mx { domain }) => run_mx_subcommand(&cli, domain).await,
         Some(Command::CheckUpdate) => run_check_update_subcommand().await,
+        Some(Command::Providers) => run_providers_subcommand(&cli),
         None => run_probe(&cli).await,
     }
 }
@@ -202,9 +203,46 @@ async fn run_mx_subcommand(cli: &Cli, domain: &str) -> Result<ExitCode> {
     let resolver = dns::DnsResolver::new(cli.dns_server)?;
     let (mx_lookup, security) = futures::join!(resolver.mx(&domain), resolver.security(&domain));
     let mx = mx_lookup?;
-    let provider = dns::detect_provider(&mx, security.spf.as_deref());
+    let provider_match = dns::detect_provider_detail(&mx, security.spf.as_deref());
+    let provider = provider_match.as_ref().map(|matched| matched.name);
+    let match_description = provider_match.as_ref().map(|matched| matched.describe());
 
-    let mut writer: Box<dyn std::io::Write> = match &cli.output {
+    let (mut writer, color, width) = report_writer(cli)?;
+    let report = output::MxReport {
+        domain: &domain,
+        mx: &mx,
+        security: &security,
+        provider,
+        provider_match: match_description.as_deref(),
+        verbose: cli.verbose > 0,
+        format: cli.format,
+        color,
+        width,
+    };
+    write_mx_report(writer.as_mut(), &report)?;
+    writer.flush().ok();
+    Ok(ExitCode::SUCCESS)
+}
+
+fn run_providers_subcommand(cli: &Cli) -> Result<ExitCode> {
+    let quiet = cli.effective_quiet();
+    init_tracing(cli.verbose, quiet);
+    let (mut writer, color, width) = report_writer(cli)?;
+    output::write_provider_list(
+        writer.as_mut(),
+        dns::PROVIDER_FINGERPRINTS,
+        cli.format,
+        color,
+        width,
+    )?;
+    writer.flush().ok();
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Open the report destination for the DNS-facing subcommands: `--output`
+/// file or stdout, plus color and width hints for table rendering.
+fn report_writer(cli: &Cli) -> Result<(Box<dyn std::io::Write>, bool, u16)> {
+    let writer: Box<dyn std::io::Write> = match &cli.output {
         Some(path) => Box::new(std::io::BufWriter::new(
             std::fs::File::create(path)
                 .with_context(|| format!("cannot create output file {}", path.display()))?,
@@ -213,18 +251,7 @@ async fn run_mx_subcommand(cli: &Cli, domain: &str) -> Result<ExitCode> {
     };
     let color = cli.output.is_none() && console::colors_enabled();
     let width = console::Term::stdout().size().1.max(60);
-    let report = output::MxReport {
-        domain: &domain,
-        mx: &mx,
-        security: &security,
-        provider,
-        format: cli.format,
-        color,
-        width,
-    };
-    write_mx_report(writer.as_mut(), &report)?;
-    writer.flush().ok();
-    Ok(ExitCode::SUCCESS)
+    Ok((writer, color, width))
 }
 
 fn init_tracing(verbose: u8, quiet: bool) {

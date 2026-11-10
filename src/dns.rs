@@ -131,86 +131,364 @@ impl DnsResolver {
     }
 }
 
+/// One fingerprint needle and the mail platform it identifies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct ProviderFingerprint {
+    /// Coarse grouping shown by `rcptx providers`.
+    pub category: &'static str,
+    /// Lowercase substring matched against MX hostnames and the SPF record.
+    pub needle: &'static str,
+    /// Platform name reported on a match.
+    pub provider: &'static str,
+}
+
+/// The built-in provider fingerprint table, grouped by category. Entries are
+/// matched in order — more specific needles must precede generic ones within
+/// a vendor (`protection.outlook.com` before `outlook.com`).
+pub const PROVIDER_FINGERPRINTS: &[ProviderFingerprint] = &[
+    // Secure email gateways / email security services
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "ppe-hosted.com",
+        provider: "Proofpoint",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "pphosted.com",
+        provider: "Proofpoint",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "ppops.net",
+        provider: "Proofpoint",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "mimecast.com",
+        provider: "Mimecast",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "barracudanetworks.com",
+        provider: "Barracuda Email Security",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "cudamail.com",
+        provider: "Barracuda Email Security",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "iphmx.com",
+        provider: "Cisco Email Security (IronPort)",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "messagelabs.com",
+        provider: "Symantec / Broadcom MessageLabs",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "trendmicro.com",
+        provider: "Trend Micro Email Security",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "spamd.one",
+        provider: "Sophos Email",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "vadesecure.com",
+        provider: "Vade for Email",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "hornetsecurity.com",
+        provider: "Hornetsecurity 365 Total Protection",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "abnormal.ai",
+        provider: "Abnormal Security",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "avanan.com",
+        provider: "Check Point Harmony Email (Avanan)",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "checkpoint.com",
+        provider: "Check Point Harmony Email (Avanan)",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "appriver.com",
+        provider: "AppRiver",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "mailassure.com",
+        provider: "N-able Mail Assure (SpamExperts)",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "spamexperts.com",
+        provider: "N-able Mail Assure (SpamExperts)",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "reflexion.net",
+        provider: "Reflexion Email Security",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "retarus.com",
+        provider: "Retarus",
+    },
+    ProviderFingerprint {
+        category: "gateway",
+        needle: "retarus.de",
+        provider: "Retarus",
+    },
+    // Cloud productivity suites
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "protection.outlook.com",
+        provider: "Microsoft 365 / Exchange Online",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "outlook.com",
+        provider: "Microsoft 365 / Exchange Online",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "google.com",
+        provider: "Google Workspace",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "googlemail.com",
+        provider: "Google Workspace",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "psmtp.com",
+        provider: "Google Postini (legacy Message Security)",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "zoho",
+        provider: "Zoho Mail",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "icloud.com",
+        provider: "Apple iCloud Mail",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "yandex",
+        provider: "Yandex 360",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "amazonaws.com",
+        provider: "Amazon WorkMail / SES",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "aliyun",
+        provider: "Alibaba Cloud Mail (Qiye)",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "qq.com",
+        provider: "QQ Mail / Tencent Exmail",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "163.com",
+        provider: "NetEase Mail",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "126.com",
+        provider: "NetEase Mail",
+    },
+    ProviderFingerprint {
+        category: "cloud suite",
+        needle: "naver.com",
+        provider: "Naver Mail",
+    },
+    // Consumer & shared-hosting mail
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "messagingengine.com",
+        provider: "Fastmail",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "protonmail.ch",
+        provider: "Proton Mail",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "protonmail.com",
+        provider: "Proton Mail",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "gmx.net",
+        provider: "GMX",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "gmx.com",
+        provider: "GMX",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "emailsrvr.com",
+        provider: "Rackspace Email",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "secureserver.net",
+        provider: "GoDaddy",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "privateemail.com",
+        provider: "Namecheap Private Email",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "hostinger.com",
+        provider: "Hostinger Email",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "hostgator.com",
+        provider: "HostGator",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "bluehost.com",
+        provider: "Bluehost",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "rzone.de",
+        provider: "STRATO AG",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "kundenserver.de",
+        provider: "IONOS by 1&1",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "perfora.net",
+        provider: "IONOS by 1&1",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "ovh.net",
+        provider: "OVHcloud",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "mail.gandi.net",
+        provider: "Gandi Mail",
+    },
+    ProviderFingerprint {
+        category: "hosting",
+        needle: "oxcs.net",
+        provider: "Open-Xchange (hosted)",
+    },
+    // Forwarding services
+    ProviderFingerprint {
+        category: "forwarding",
+        needle: "mx.cloudflare.net",
+        provider: "Cloudflare Email Routing",
+    },
+    ProviderFingerprint {
+        category: "forwarding",
+        needle: "improvmx.com",
+        provider: "ImprovMX (forwarding)",
+    },
+    ProviderFingerprint {
+        category: "forwarding",
+        needle: "forwardemail.net",
+        provider: "Forward Email (forwarding)",
+    },
+];
+
+/// Where a provider fingerprint matched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MatchSource {
+    /// The needle matched inside this MX hostname.
+    MxHost(String),
+    /// The needle matched inside the SPF record.
+    SpfRecord,
+}
+
+/// A provider detection result with provenance, for fingerprint debugging.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderMatch {
+    /// Platform name that matched.
+    pub name: &'static str,
+    /// The needle that matched.
+    pub needle: &'static str,
+    /// Where the needle matched.
+    pub source: MatchSource,
+}
+
+impl ProviderMatch {
+    /// One-line human-readable provenance, e.g.
+    /// `needle "google.com" matched MX host aspmx.l.google.com`.
+    pub fn describe(&self) -> String {
+        match &self.source {
+            MatchSource::MxHost(host) => {
+                format!("needle {:?} matched MX host {}", self.needle, host)
+            }
+            MatchSource::SpfRecord => format!("needle {:?} matched the SPF record", self.needle),
+        }
+    }
+}
+
 /// Guess the receiving mail platform from MX hostnames and SPF includes.
 pub fn detect_provider(mx: &[MxEntry], spf: Option<&str>) -> Option<&'static str> {
-    let mut haystack = mx
-        .iter()
-        .map(|entry| entry.exchange.as_str())
-        .collect::<Vec<_>>()
-        .join(" ");
-    if let Some(spf) = spf {
-        haystack.push(' ');
-        haystack.push_str(spf);
+    detect_provider_detail(mx, spf).map(|matched| matched.name)
+}
+
+/// Like [`detect_provider`], but reports *which* needle matched and where —
+/// the provenance surfaced by `rcptx mx -v` and the scan-report notes.
+pub fn detect_provider_detail(mx: &[MxEntry], spf: Option<&str>) -> Option<ProviderMatch> {
+    for fingerprint in PROVIDER_FINGERPRINTS {
+        for entry in mx {
+            if entry.exchange.to_lowercase().contains(fingerprint.needle) {
+                return Some(ProviderMatch {
+                    name: fingerprint.provider,
+                    needle: fingerprint.needle,
+                    source: MatchSource::MxHost(entry.exchange.clone()),
+                });
+            }
+        }
+        if let Some(spf) = spf
+            && spf.to_lowercase().contains(fingerprint.needle)
+        {
+            return Some(ProviderMatch {
+                name: fingerprint.provider,
+                needle: fingerprint.needle,
+                source: MatchSource::SpfRecord,
+            });
+        }
     }
-    let haystack = haystack.to_ascii_lowercase();
-
-    // Fingerprints are matched against MX hostnames plus the SPF record, in
-    // order — put more specific needles before generic ones within a vendor.
-    const PROVIDERS: &[(&str, &str)] = &[
-        // Secure email gateways / email security services
-        ("ppe-hosted.com", "Proofpoint"),
-        ("pphosted.com", "Proofpoint"),
-        ("ppops.net", "Proofpoint"),
-        ("mimecast.com", "Mimecast"),
-        ("barracudanetworks.com", "Barracuda Email Security"),
-        ("cudamail.com", "Barracuda Email Security"),
-        ("iphmx.com", "Cisco Email Security (IronPort)"),
-        ("messagelabs.com", "Symantec / Broadcom MessageLabs"),
-        ("trendmicro.com", "Trend Micro Email Security"),
-        ("spamd.one", "Sophos Email"),
-        ("vadesecure.com", "Vade for Email"),
-        ("hornetsecurity.com", "Hornetsecurity 365 Total Protection"),
-        ("abnormal.ai", "Abnormal Security"),
-        ("avanan.com", "Check Point Harmony Email (Avanan)"),
-        ("checkpoint.com", "Check Point Harmony Email (Avanan)"),
-        ("appriver.com", "AppRiver"),
-        ("mailassure.com", "N-able Mail Assure (SpamExperts)"),
-        ("spamexperts.com", "N-able Mail Assure (SpamExperts)"),
-        ("reflexion.net", "Reflexion Email Security"),
-        ("retarus.com", "Retarus"),
-        ("retarus.de", "Retarus"),
-        // Cloud productivity suites
-        ("protection.outlook.com", "Microsoft 365 / Exchange Online"),
-        ("outlook.com", "Microsoft 365 / Exchange Online"),
-        ("google.com", "Google Workspace"),
-        ("googlemail.com", "Google Workspace"),
-        ("psmtp.com", "Google Postini (legacy Message Security)"),
-        ("zoho", "Zoho Mail"),
-        ("icloud.com", "Apple iCloud Mail"),
-        ("yandex", "Yandex 360"),
-        ("amazonaws.com", "Amazon WorkMail / SES"),
-        ("aliyun", "Alibaba Cloud Mail (Qiye)"),
-        ("qq.com", "QQ Mail / Tencent Exmail"),
-        ("163.com", "NetEase Mail"),
-        ("126.com", "NetEase Mail"),
-        ("naver.com", "Naver Mail"),
-        // Consumer & shared-hosting mail
-        ("messagingengine.com", "Fastmail"),
-        ("protonmail.ch", "Proton Mail"),
-        ("protonmail.com", "Proton Mail"),
-        ("gmx.net", "GMX"),
-        ("gmx.com", "GMX"),
-        ("emailsrvr.com", "Rackspace Email"),
-        ("secureserver.net", "GoDaddy"),
-        ("privateemail.com", "Namecheap Private Email"),
-        ("hostinger.com", "Hostinger Email"),
-        ("hostgator.com", "HostGator"),
-        ("bluehost.com", "Bluehost"),
-        ("rzone.de", "STRATO AG"),
-        ("kundenserver.de", "IONOS by 1&1"),
-        ("perfora.net", "IONOS by 1&1"),
-        ("ovh.net", "OVHcloud"),
-        ("mail.gandi.net", "Gandi Mail"),
-        ("oxcs.net", "Open-Xchange (hosted)"),
-        // Forwarding services
-        ("mx.cloudflare.net", "Cloudflare Email Routing"),
-        ("improvmx.com", "ImprovMX (forwarding)"),
-        ("forwardemail.net", "Forward Email (forwarding)"),
-    ];
-
-    PROVIDERS
-        .iter()
-        .find_map(|(needle, name)| haystack.contains(needle).then_some(*name))
+    None
 }
 
 #[cfg(test)]
@@ -432,5 +710,97 @@ mod tests {
             detect_provider(&[mx(10, "example-com.mail.protection.outlook.com")], None),
             Some("Microsoft 365 / Exchange Online")
         );
+    }
+
+    #[test]
+    fn provider_detail_reports_needle_and_mx_host() {
+        let detail = detect_provider_detail(&[mx(5, "aspmx.l.google.com")], None).unwrap();
+        assert_eq!(detail.name, "Google Workspace");
+        assert_eq!(detail.needle, "google.com");
+        assert_eq!(
+            detail.source,
+            MatchSource::MxHost("aspmx.l.google.com".to_string())
+        );
+        assert_eq!(
+            detail.describe(),
+            r#"needle "google.com" matched MX host aspmx.l.google.com"#
+        );
+    }
+
+    #[test]
+    fn provider_detail_reports_spf_source() {
+        let detail =
+            detect_provider_detail(&[], Some("v=spf1 include:spf.protection.outlook.com -all"))
+                .unwrap();
+        assert_eq!(detail.name, "Microsoft 365 / Exchange Online");
+        assert_eq!(detail.needle, "protection.outlook.com");
+        assert_eq!(detail.source, MatchSource::SpfRecord);
+        assert!(detail.describe().contains("SPF record"));
+    }
+
+    #[test]
+    fn detail_agrees_with_simple_detection() {
+        let cases: [(Vec<MxEntry>, Option<&str>); 4] = [
+            (vec![mx(10, "mx.pphosted.com")], None),
+            (vec![mx(10, "in1-smtp.messagingengine.com")], None),
+            (
+                vec![mx(10, "mx1.example.com")],
+                Some("v=spf1 include:_spf.google.com ~all"),
+            ),
+            (vec![mx(10, "mx1.example.com")], None),
+        ];
+        for (entries, spf) in cases {
+            assert_eq!(
+                detect_provider(&entries, spf),
+                detect_provider_detail(&entries, spf).map(|m| m.name)
+            );
+        }
+    }
+
+    #[test]
+    fn fingerprint_table_is_sane() {
+        assert!(PROVIDER_FINGERPRINTS.len() > 50);
+        let mut needles: Vec<&str> = PROVIDER_FINGERPRINTS.iter().map(|fp| fp.needle).collect();
+        let total = needles.len();
+        needles.sort_unstable();
+        needles.dedup();
+        assert_eq!(needles.len(), total, "fingerprint needles must be unique");
+        for fingerprint in PROVIDER_FINGERPRINTS {
+            assert!(!fingerprint.needle.is_empty(), "empty needle");
+            assert!(
+                !fingerprint.provider.is_empty(),
+                "empty provider for {}",
+                fingerprint.needle
+            );
+            assert!(
+                !fingerprint.category.is_empty(),
+                "empty category for {}",
+                fingerprint.needle
+            );
+            assert_eq!(
+                fingerprint.needle,
+                fingerprint.needle.to_lowercase(),
+                "{} must be lowercase",
+                fingerprint.needle
+            );
+            assert!(
+                !fingerprint.needle.contains(char::is_whitespace),
+                "{} must not contain whitespace",
+                fingerprint.needle
+            );
+        }
+    }
+
+    #[test]
+    fn specific_needles_precede_generic_ones_in_the_table() {
+        let position = |needle: &str| {
+            PROVIDER_FINGERPRINTS
+                .iter()
+                .position(|fp| fp.needle == needle)
+                .unwrap_or_else(|| panic!("{needle} missing from the table"))
+        };
+        assert!(position("protection.outlook.com") < position("outlook.com"));
+        assert!(position("protonmail.ch") < position("protonmail.com"));
+        assert!(position("avanan.com") < position("checkpoint.com"));
     }
 }
