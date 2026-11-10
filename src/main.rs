@@ -1,31 +1,23 @@
-//! `smtp-probe` — smart asynchronous SMTP reconnaissance & deliverability CLI.
-//!
-//! Pipeline: parse CLI → validate → resolve inputs → (per domain) MX + SPF/
-//! DMARC recon → catch-all probing → candidate probing with session reuse →
-//! greylist retries → formatted output. Exit codes: 0 success, 1
-//! configuration/runtime error, 2 outbound port appears blocked.
+//! `smtp-probe` binary — argument parsing, progress/logging setup, signal
+//! handling and exit-code policy. All real work lives in the `smtp_probe`
+//! library crate so it stays integration-testable.
 
 #![forbid(unsafe_code)]
 
-mod cli;
-mod dns;
-mod output;
-mod presets;
-mod scanner;
-mod smtp;
-
 use std::process::ExitCode;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::Parser;
 use indicatif::MultiProgress;
+use smtp_probe::cli::{Cli, Command};
+use smtp_probe::dns;
+use smtp_probe::output::{self, OutputSink, RunSummary, write_mx_report};
+use smtp_probe::scanner;
+use smtp_probe::update::{self, UpdateInfo};
 use tracing_subscriber::EnvFilter;
-
-use crate::cli::{Cli, Command};
-use crate::output::{write_mx_report, OutputSink, RunSummary};
 
 fn main() -> ExitCode {
     let cli = match Cli::try_parse() {
@@ -47,7 +39,10 @@ fn main() -> ExitCode {
         }
     };
 
-    let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(runtime) => runtime,
         Err(e) => {
             eprintln!("error: failed to start the async runtime: {e}");
@@ -67,15 +62,70 @@ fn main() -> ExitCode {
 async fn run(cli: Cli) -> Result<ExitCode> {
     cli.validate().context("invalid configuration")?;
 
-    if let Some(Command::Mx { domain }) = &cli.command {
-        return run_mx_subcommand(&cli, domain).await;
+    if cli.check_update {
+        // Never fatal for the main run — a flaky network must not stop a scan.
+        let quiet = cli.effective_quiet();
+        match update::check_for_update(Duration::from_secs(8)).await {
+            Ok(info) if info.update_available => eprintln!("{}", format_update_notice(&info)),
+            Ok(info) if !quiet => eprintln!(
+                "smtp-probe {} is up to date (latest release: {})",
+                update::CURRENT_VERSION,
+                info.latest
+            ),
+            Ok(_) => {}
+            Err(e) => eprintln!("warning: update check failed: {e:#}"),
+        }
     }
 
+    match &cli.command {
+        Some(Command::Mx { domain }) => run_mx_subcommand(&cli, domain).await,
+        Some(Command::CheckUpdate) => run_check_update_subcommand().await,
+        None => run_probe(&cli).await,
+    }
+}
+
+async fn run_check_update_subcommand() -> Result<ExitCode> {
+    match update::check_for_update(Duration::from_secs(15)).await {
+        Ok(info) => {
+            println!("current version : {}", info.current);
+            println!(
+                "latest release  : {}{}",
+                info.latest,
+                if info.prerelease { " (prerelease)" } else { "" }
+            );
+            if info.update_available {
+                println!("update available: {}", info.release_url);
+                println!("download        : {}", update::RELEASES_URL);
+            } else {
+                println!("you are up to date");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(e) => {
+            eprintln!("error: update check failed: {e:#}");
+            eprintln!("check {} manually", update::RELEASES_URL);
+            Ok(ExitCode::from(1))
+        }
+    }
+}
+
+fn format_update_notice(info: &UpdateInfo) -> String {
+    format!(
+        "update available: {} → {} — {}",
+        info.current, info.latest, info.release_url
+    )
+}
+
+async fn run_probe(cli: &Cli) -> Result<ExitCode> {
     let config = cli.resolve()?;
     let quiet = cli.effective_quiet();
     init_tracing(cli.verbose, quiet);
 
-    let progress = if quiet { None } else { Some(MultiProgress::new()) };
+    let progress = if quiet {
+        None
+    } else {
+        Some(MultiProgress::new())
+    };
 
     // Graceful shutdown: first Ctrl+C sets the flag and lets in-flight probes
     // drain; a second Ctrl+C aborts immediately.
@@ -116,9 +166,7 @@ async fn run(cli: Cli) -> Result<ExitCode> {
         let summary = RunSummary::from_reports(&outcome.reports, started.elapsed());
         eprintln!(
             "smtp-probe finished: {} domain(s), {} probe(s) in {:.1}s",
-            summary.domains,
-            summary.probes,
-            summary.elapsed_secs
+            summary.domains, summary.probes, summary.elapsed_secs
         );
     }
     if outcome.interrupted {
@@ -128,8 +176,7 @@ async fn run(cli: Cli) -> Result<ExitCode> {
     if outcome.tcp_attempts > 0 && outcome.tcp_connect_timeouts == outcome.tcp_attempts {
         eprintln!(
             "warning: all {} TCP connection attempts timed out — outbound port {} appears blocked",
-            outcome.tcp_attempts,
-            config.port
+            outcome.tcp_attempts, config.port
         );
         return Ok(ExitCode::from(2));
     }
@@ -159,7 +206,8 @@ async fn run_mx_subcommand(cli: &Cli, domain: &str) -> Result<ExitCode> {
 
     let mut writer: Box<dyn std::io::Write> = match &cli.output {
         Some(path) => Box::new(std::io::BufWriter::new(
-            std::fs::File::create(path).with_context(|| format!("cannot create output file {}", path.display()))?,
+            std::fs::File::create(path)
+                .with_context(|| format!("cannot create output file {}", path.display()))?,
         )),
         None => Box::new(std::io::stdout()),
     };
@@ -191,7 +239,8 @@ fn init_tracing(verbose: u8, quiet: bool) {
             _ => "trace".to_string(),
         }
     };
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)

@@ -1,11 +1,27 @@
+<div align="center">
+
 # smtp-probe
 
-Smart, asynchronous SMTP reconnaissance & deliverability CLI written in Rust.
-Probes recipient validity, MX posture and catch-all behaviour — **without
-sending a single email** — using the SMTP protocol itself (`EHLO` →
-`STARTTLS` → `MAIL FROM` → `RCPT TO` → `RSET`).
+**Smart, asynchronous SMTP reconnaissance & deliverability probing — without sending a single email.**
 
-```
+[![CI](https://github.com/sametcn99/rcptx/actions/workflows/ci.yml/badge.svg)](https://github.com/sametcn99/rcptx/actions/workflows/ci.yml)
+[![Release](https://github.com/sametcn99/rcptx/actions/workflows/release.yml/badge.svg)](https://github.com/sametcn99/rcptx/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/sametcn99/rcptx?color=blue)](https://github.com/sametcn99/rcptx/releases/latest)
+[![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange)](https://www.rust-lang.org/)
+
+[Website](https://sametcn99.github.io/rcptx/) · [Releases](https://github.com/sametcn99/rcptx/releases) · [Issues](https://github.com/sametcn99/rcptx/issues) · [Usage guide](#usage-guide)
+
+</div>
+
+---
+
+`smtp-probe` probes recipient validity, MX posture and catch-all behaviour
+using the SMTP protocol itself (`EHLO` → `STARTTLS` → `MAIL FROM` →
+`RCPT TO` → `RSET`). It classifies each candidate from the 3-digit reply code
+**and** RFC 3463 enhanced status codes, reuses sessions intelligently, and
+plays nice with greylisting, tarpits and anti-enumeration defences.
+
+```text
 $ smtp-probe -d acme.com
 
  acme.com
@@ -22,7 +38,22 @@ $ smtp-probe -d acme.com
 │ hr@acme.com        ┆ accepted ┆ 250  ┆ 2.1.5 ┆ 1   ┆ 121 ┆ 2.1.5 OK     ┆
 │ nobody@acme.com    ┆ rejected ┆ 550  ┆ 5.1.1 ┆ 1   ┆ 118 ┆ User unknown ┆
 └────────────────────┴──────────┴──────┴───────┴─────┴─────┴──────────────┘
+Summary: 22 probe(s) across 1 domain(s) — 3 accepted · 0 catch-all* · 19 rejected …
 ```
+
+## Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Usage guide](#usage-guide)
+- [Verdicts](#output-verdicts)
+- [Smart behaviour](#smart-behaviour)
+- [Update checks](#update-checks)
+- [Exit codes](#exit-codes)
+- [Continuous integration & releases](#continuous-integration--releases)
+- [Contributing](#contributing)
+- [Legal & ethical use](#legal--ethical-use)
+- [License](#license)
 
 ## Features
 
@@ -30,41 +61,64 @@ $ smtp-probe -d acme.com
   connection counts, timeouts on every operation and graceful `Ctrl+C`
   shutdown (press twice to abort hard; partial results are always printed).
 - **Session reuse (`RSET` multiplexing)** — one connection probes a batch of
-  candidates (`MAIL FROM` → `RCPT TO` → `RSET` per candidate, `--max-rcpt-per-conn`
-  per session) instead of a fresh TCP+TLS handshake per address. If the server
-  drops the session mid-batch (421 / reset / timeout), the probe transparently
-  reconnects and **resumes from the failed candidate**, failing over to
-  lower-priority MX hosts when needed.
-- **Accurate verdicts** from the 3-digit code *and* RFC 3463 enhanced status
-  codes: `accepted`, `accepted_catch_all`, `rejected`, `temporary`,
-  `policy_blocked`, `indeterminate` (252), `error`.
+  candidates (`MAIL FROM` → `RCPT TO` → `RSET` per candidate, controlled by
+  `--max-rcpt-per-conn`) instead of a fresh TCP+TLS handshake per address.
+  If a server drops the session mid-batch (421 / reset / timeout), the probe
+  transparently reconnects and **resumes from the failed candidate**, failing
+  over to lower-priority MX hosts when needed.
+- **Accurate verdicts** from the 3-digit code _and_ enhanced status codes
+  (RFC 3463): `accepted`, `accepted_catch_all`, `rejected`, `temporary`,
+  `policy_blocked`, `indeterminate` (`252`), `error`.
 - **Catch-all detection** via random UUID local-parts before candidate
   scanning; `--stop-on-catch-all` skips hopeless scans.
 - **DNS & security recon**: MX (sorted, null-MX aware), SPF, DMARC and a
-  provider guess (Google Workspace, Microsoft 365, Proofpoint, Mimecast, …).
-  Custom resolver via `--dns-server`.
-- **Greylisting support**: 4xx replies are retried (`--retry-greylist`,
+  provider guess (Google Workspace, Microsoft 365, Proofpoint, Mimecast,
+  Barracuda, Cloudflare, iCloud, …). Custom resolver via `--dns-server`.
+- **Greylisting support**: `4xx` replies are retried (`--retry-greylist`,
   `--retry-delay`).
 - **Anti-blocking posture**: `--delay-ms` + `--jitter-ms` jittered pacing,
   `--concurrency` limiter, `--random-ehlo`, `--auto-mail-from` plausible
   sender generation.
-- **TLS everywhere**: opportunistic/required/disabled STARTTLS, implicit TLS
-  on port 465, `--insecure` for legacy self-signed servers. Pure-Rust crypto
-  provider — no C toolchain needed to build.
+- **TLS everywhere**: opportunistic / required / disabled STARTTLS, implicit
+  TLS on port 465, `--insecure` for legacy self-signed servers. Built on a
+  **pure-Rust crypto provider** — the binary compiles without any C toolchain.
 - **Four output formats**: human `table`, `json` document, streaming `jsonl`
   and `csv`; `--only-accepted` filter; `--output <FILE>`; progress bars that
-  auto-hide when piping or writing machine formats.
-- **Exit codes**: `0` ok · `1` configuration/runtime error · `2` outbound
-  port appears blocked (every TCP connect timed out).
+  auto-hide when piping or when writing machine formats.
+- **Update checks** straight from GitHub Releases: `smtp-probe check-update`
+  or `--check-update` (see [Update checks](#update-checks)).
+- **77 automated tests**, including an in-process scripted SMTP server that
+  exercises session reuse, reconnect-resume, catch-all logic and greylist
+  retries end-to-end.
 
-## Install
+## Installation
+
+### Prebuilt binaries
+
+Download from the [latest release](https://github.com/sametcn99/rcptx/releases/latest):
+
+| Platform              | File                                         |
+| --------------------- | -------------------------------------------- |
+| Linux (x86_64)        | `smtp-probe-x86_64-unknown-linux-gnu.tar.gz` |
+| macOS (Apple Silicon) | `smtp-probe-aarch64-apple-darwin.tar.gz`     |
+| macOS (Intel)         | `smtp-probe-x86_64-apple-darwin.tar.gz`      |
+| Windows (x64)         | `smtp-probe-x86_64-pc-windows-msvc.zip`      |
+
+Each archive carries a matching `.sha256` checksum.
+
+### From source
 
 ```sh
-cargo install --path .   # from a checkout
-cargo build --release    # or just build locally
+# Install directly from GitHub
+cargo install --git https://github.com/sametcn99/rcptx
+
+# Or build from a checkout
+git clone https://github.com/sametcn99/rcptx
+cd rcptx
+cargo build --release
 ```
 
-## Usage examples
+## Usage guide
 
 ```sh
 # 1. Probe a domain with the default presets (hr, general), live progress
@@ -84,34 +138,94 @@ smtp-probe -d strict-corp.com -p all -c 1 --delay-ms 2000 --jitter-ms 800 \
 # 5. DNS-only posture check (no SMTP traffic at all)
 smtp-probe mx example.com --format json
 
-# Debugging: -v prints the raw SMTP transcript (>>> MAIL FROM, <<< 250 ...)
+# 6. Debugging: -v prints the raw SMTP transcript (>>> MAIL FROM, <<< 250 ...)
 smtp-probe -d example.com -l info --catch-all-probes 1 -v
 ```
 
-## Smart behaviour notes
+### Key flags
 
-- **Session reuse**: with the defaults (2 concurrent connections, 5 RCPTs per
-  session) a 22-candidate scan costs ~5 handshakes instead of 22.
-- **MX failover** (`--mx-failover`, on by default, `--no-mx-failover` to
-  disable): connect failures, not SMTP replies, trigger failover — a `550`
-  from the primary is a real answer, not a reason to move on.
-- **Policy detection**: a rejection at `MAIL FROM` (before any recipient is
-  named) is classified `policy_blocked`, as are `5.7.x` enhanced codes and
-  blocklist-flavoured text — these say nothing about the candidate.
-- **Null MX** (RFC 7505) and MX-less domains are handled: the latter falls
-  back to the implicit MX (the domain's A record) per RFC 5321 §5.1.
+| Flag                                                    | Default                | Purpose                                                                                   |
+| ------------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
+| `-d, --domain` / `-D, --domains-file` / `--stdin`       | —                      | Targets (domains or full addresses)                                                       |
+| `-p, --preset`                                          | `hr,general`           | Built-in local-part dictionaries (`hr`, `general`, `support`, `tech`, `executive`, `all`) |
+| `-w, --wordlist` / `-l, --local-parts` / `--no-presets` | —                      | Custom / inline candidates                                                                |
+| `-f, --mail-from` / `--auto-mail-from[=DOMAIN]`         | `probe@example.com`    | Envelope sender                                                                           |
+| `--port`                                                | `25`                   | SMTP port (25, 587 submission, 465 implicit TLS)                                          |
+| `--mx-host` / `--no-mx-failover`                        | —                      | Direct server override / disable MX failover                                              |
+| `--starttls`                                            | `opportunistic`        | `opportunistic` · `required` · `disabled`                                                 |
+| `--insecure`                                            | off                    | Skip TLS certificate verification                                                         |
+| `--dns-server`                                          | system                 | Custom resolver (e.g. `1.1.1.1`, `8.8.8.8`)                                               |
+| `-c, --concurrency`                                     | `2`                    | Concurrent SMTP connections per domain                                                    |
+| `--max-rcpt-per-conn`                                   | `5`                    | RCPT probes per session before reconnecting                                               |
+| `--delay-ms` / `--jitter-ms`                            | `300` / `150`          | Jittered pacing between probes                                                            |
+| `--catch-all-probes` / `--stop-on-catch-all`            | `2` / off              | Catch-all detection                                                                       |
+| `--retry-greylist` / `--retry-delay`                    | `1` / `15s`            | Greylist retries                                                                          |
+| `--format` / `-o, --output` / `--only-accepted`         | `table` / stdout / off | Output control                                                                            |
+| `-q, --quiet` / `-v, --verbose`                         | off / 0                | Noise control; `-v` shows the SMTP transcript                                             |
+
+Run `smtp-probe --help` for the full reference.
 
 ## Output verdicts
 
-| Verdict | Meaning |
-| --- | --- |
-| `accepted` | `250`/`251` — mailbox exists and accepts mail |
-| `accepted_catch_all` | accepted, but the domain accepts *every* address |
-| `rejected` | `550 5.1.1`-style — user unknown / mailbox unavailable |
-| `temporary` | `4xx` — greylisted, rate-limited, try later |
-| `policy_blocked` | `5.7.x` / `554` / sender-stage rejection — anti-enumeration policy |
-| `indeterminate` | `252` — cannot VRFY, but will accept |
-| `error` | connection timeout, TLS failure, unreachable MX |
+| Verdict              | Meaning                                                            |
+| -------------------- | ------------------------------------------------------------------ |
+| `accepted`           | `250`/`251` — mailbox exists and accepts mail                      |
+| `accepted_catch_all` | accepted, but the domain accepts _every_ address                   |
+| `rejected`           | `550 5.1.1`-style — user unknown / mailbox unavailable             |
+| `temporary`          | `4xx` — greylisted, rate-limited, try later                        |
+| `policy_blocked`     | `5.7.x` / `554` / sender-stage rejection — anti-enumeration policy |
+| `indeterminate`      | `252` — cannot VRFY, but will accept                               |
+| `error`              | connection timeout, TLS failure, unreachable MX                    |
+
+## Smart behaviour
+
+- **Session reuse**: with the defaults (2 concurrent connections, 5 RCPTs per
+  session) a 22-candidate scan costs ~5 handshakes instead of 22.
+- **MX failover** (on by default): _connect_ failures, not SMTP replies,
+  trigger failover — a `550` from the primary MX is a real answer, not a
+  reason to move on.
+- **Policy detection**: a rejection at `MAIL FROM` (before any recipient is
+  named) is classified `policy_blocked`, as are `5.7.x` enhanced codes and
+  blocklist-flavoured text — these say nothing about the candidate itself.
+- **Null MX** (RFC 7505) and MX-less domains are handled: the latter falls
+  back to the implicit MX (the domain's A record) per RFC 5321 §5.1.
+
+## Update checks
+
+`smtp-probe` can compare its version against the
+[GitHub releases](https://github.com/sametcn99/rcptx/releases) of this repository:
+
+```sh
+# Standalone check
+smtp-probe check-update
+
+# Or before any run (non-fatal — a flaky network never stops a scan)
+smtp-probe -d example.com --check-update
+```
+
+## Exit codes
+
+| Code | Meaning                                                                  |
+| ---- | ------------------------------------------------------------------------ |
+| `0`  | Completed (also for Ctrl+C partial runs)                                 |
+| `1`  | Configuration or runtime error                                           |
+| `2`  | All TCP connection attempts timed out — outbound port 25 appears blocked |
+
+## Continuous integration & releases
+
+- **[CI](https://github.com/sametcn99/rcptx/actions/workflows/ci.yml)** runs
+  `cargo fmt --check`, `cargo clippy -D warnings` and the full test suite on
+  Ubuntu, Windows and macOS for every push and pull request.
+- **[Release](https://github.com/sametcn99/rcptx/actions/workflows/release.yml)**
+  builds signed-checksummed archives for Linux, macOS (Apple Silicon + Intel)
+  and Windows whenever a `v*` tag is pushed, and publishes them to
+  [Releases](https://github.com/sametcn99/rcptx/releases).
+
+## Contributing
+
+Issues and pull requests are welcome at <https://github.com/sametcn99/rcptx>.
+Please make sure `cargo fmt --check`, `cargo clippy --all-targets -- -D
+warnings` and `cargo test` all pass locally — CI enforces the same.
 
 ## Legal & ethical use
 
@@ -120,6 +234,6 @@ infrastructure, authorized assessments, deliverability research). Recipient
 enumeration may be restricted by law or terms of service in your
 jurisdiction. Be gentle: the rate-limit defaults exist to keep you polite.
 
-## License
+---
 
-MIT OR Apache-2.0
+<p align="center">🌐 Project website: <a href="https://sametcn99.github.io/rcptx/">sametcn99.github.io/rcptx</a></p>

@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>smtp-probe — smart SMTP reconnaissance &amp; deliverability probing</title>
+    <meta
+      name="description"
+      content="smtp-probe is a smart, asynchronous SMTP reconnaissance CLI: probe recipient validity, MX posture and catch-all behaviour without sending a single email."
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f172a'/%3E%3Cpath d='M20 32l30 22 30-22' stroke='%2338bdf8' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='20' y='30' width='60' height='40' rx='6' stroke='%2338bdf8' stroke-width='8' fill='none'/%3E%3C/svg%3E"
+    />
+    <style>
+      :root {
+        --bg: #0b1220;
+        --bg-soft: #0f172a;
+        --bg-card: #131d33;
+        --line: #22304d;
+        --text: #dbe7ff;
+        --muted: #8fa3c8;
+        --accent: #38bdf8;
+        --accent-2: #34d399;
+        --accepted: #34d399;
+        --catchall: #22d3ee;
+        --rejected: #f87171;
+        --temporary: #fbbf24;
+        --policy: #e879f9;
+        --indeterminate: #818cf8;
+        --error: #94a3b8;
+        --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+        --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        font-family: var(--sans);
+        background:
+          radial-gradient(1200px 500px at 80% -10%, rgba(56, 189, 248, 0.12), transparent 60%),
+          radial-gradient(900px 500px at -10% 10%, rgba(52, 211, 153, 0.08), transparent 55%), var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      code {
+        font-family: var(--mono);
+        font-size: 0.92em;
+      }
+
+      /* Nav */
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        padding: 0.8rem 1.4rem;
+        background: rgba(11, 18, 32, 0.85);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+      }
+      nav .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        font-weight: 700;
+        color: var(--text);
+      }
+      nav .brand:hover {
+        text-decoration: none;
+      }
+      nav .links {
+        margin-left: auto;
+        display: flex;
+        gap: 1.1rem;
+        font-size: 0.92rem;
+        flex-wrap: wrap;
+      }
+      @media (max-width: 640px) {
+        nav .links {
+          display: none;
+        }
+      }
+
+      /* Layout */
+      .wrap {
+        max-width: 1060px;
+        margin: 0 auto;
+        padding: 0 1.25rem;
+      }
+      section {
+        padding: 3.5rem 0;
+      }
+      section + section {
+        border-top: 1px solid var(--line);
+      }
+      h2 {
+        font-size: 1.6rem;
+        margin: 0 0 0.4rem;
+      }
+      .lead {
+        color: var(--muted);
+        max-width: 46rem;
+        margin: 0 0 1.8rem;
+      }
+
+      /* Hero */
+      .hero {
+        padding: 5.2rem 0 3.6rem;
+        text-align: center;
+      }
+      .hero h1 {
+        font-size: clamp(2.4rem, 6vw, 3.6rem);
+        margin: 0 0 0.6rem;
+        letter-spacing: -0.02em;
+        background: linear-gradient(120deg, #e2f2ff 30%, var(--accent) 70%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .hero .tag {
+        font-size: clamp(1.02rem, 2.4vw, 1.25rem);
+        color: var(--muted);
+        margin: 0 auto 1.8rem;
+        max-width: 44rem;
+      }
+      .badges {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 2rem;
+      }
+      .badges img {
+        height: 22px;
+        border-radius: 3px;
+      }
+      .cta {
+        display: flex;
+        justify-content: center;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.6rem;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.68rem 1.25rem;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        border: 1px solid var(--line);
+        color: var(--text);
+        background: var(--bg-card);
+        transition:
+          transform 0.12s ease,
+          border-color 0.12s ease;
+      }
+      .btn:hover {
+        text-decoration: none;
+        transform: translateY(-1px);
+        border-color: var(--accent);
+      }
+      .btn.primary {
+        background: linear-gradient(120deg, #0ea5e9, #38bdf8);
+        border-color: transparent;
+        color: #06121f;
+      }
+      .btn.primary:hover {
+        border-color: #7dd3fc;
+      }
+
+      .install {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.9rem;
+        background: var(--bg-soft);
+        border: 1px solid var(--line);
+        padding: 0.65rem 1.5rem;
+        border-radius: 12px;
+        font-size: 0.95rem;
+      }
+      .install code {
+        color: var(--accent-2);
+      }
+      .copy {
+        border: 1px solid var(--line);
+        background: var(--bg-card);
+        color: var(--muted);
+        border-radius: 7px;
+        padding: 0.18rem 0.5rem;
+        cursor: pointer;
+        font-size: 0.78rem;
+      }
+      .copy:hover {
+        color: var(--text);
+        border-color: var(--accent);
+      }
+      .platforms {
+        margin-top: 1.1rem;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      /* Terminal */
+      .term {
+        --r: 12px;
+        max-width: 860px;
+        margin: 2.4rem auto 0;
+        background: #0a0f1c;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        box-shadow: 0 24px 60px rgba(2, 8, 20, 0.55);
+        overflow: hidden;
+        text-align: left;
+      }
+      .term-bar {
+        display: flex;
+        gap: 0.45rem;
+        padding: 0.7rem 0.95rem;
+        border-bottom: 1px solid var(--line);
+        background: #0d1526;
+      }
+      .term-bar i {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: #334564;
+      }
+      .term-bar i:nth-child(1) {
+        background: #f87171;
+      }
+      .term-bar i:nth-child(2) {
+        background: #fbbf24;
+      }
+      .term-bar i:nth-child(3) {
+        background: #34d399;
+      }
+      .term pre {
+        margin: 0;
+        padding: 1.1rem 1.25rem;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: clamp(0.72rem, 1.6vw, 0.84rem);
+        line-height: 1.55;
+      }
+      .t-dim {
+        color: #5b6f94;
+      }
+      .t-cmd {
+        color: #e2f2ff;
+      }
+      .t-green {
+        color: var(--accepted);
+      }
+      .t-cyan {
+        color: var(--catchall);
+      }
+      .t-red {
+        color: var(--rejected);
+      }
+      .t-yellow {
+        color: var(--temporary);
+      }
+      .t-magenta {
+        color: var(--policy);
+      }
+      .t-blue {
+        color: var(--indeterminate);
+      }
+
+      /* Feature grid */
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+      }
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 1.25rem 1.25rem 1.1rem;
+      }
+      .card h3 {
+        margin: 0.55rem 0 0.35rem;
+        font-size: 1.02rem;
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .card .icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(56, 189, 248, 0.12);
+        color: var(--accent);
+      }
+      .card .icon svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      /* Pipeline */
+      .pipeline {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.8rem;
+        counter-reset: step;
+      }
+      .step {
+        background: var(--bg-card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1rem;
+        position: relative;
+      }
+      .step::before {
+        counter-increment: step;
+        content: counter(step);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 7px;
+        margin-bottom: 0.5rem;
+        background: rgba(52, 211, 153, 0.14);
+        color: var(--accent-2);
+        font-weight: 700;
+        font-size: 0.85rem;
+      }
+      .step b {
+        display: block;
+        font-size: 0.95rem;
+        margin-bottom: 0.2rem;
+      }
+      .step span {
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      /* Verdict table */
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.6rem 0.8rem;
+        border-bottom: 1px solid var(--line);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .chip {
+        display: inline-block;
+        padding: 0.12rem 0.6rem;
+        border-radius: 999px;
+        font-family: var(--mono);
+        font-size: 0.8rem;
+      }
+      .chip.accepted {
+        background: rgba(52, 211, 153, 0.13);
+        color: var(--accepted);
+      }
+      .chip.accepted_catch_all {
+        background: rgba(34, 211, 238, 0.13);
+        color: var(--catchall);
+      }
+      .chip.rejected {
+        background: rgba(248, 113, 113, 0.13);
+        color: var(--rejected);
+      }
+      .chip.temporary {
+        background: rgba(251, 191, 36, 0.13);
+        color: var(--temporary);
+      }
+      .chip.policy_blocked {
+        background: rgba(232, 121, 249, 0.13);
+        color: var(--policy);
+      }
+      .chip.indeterminate {
+        background: rgba(129, 140, 248, 0.13);
+        color: var(--indeterminate);
+      }
+      .chip.error {
+        background: rgba(148, 163, 184, 0.13);
+        color: var(--error);
+      }
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--bg-card);
+      }
+
+      /* Examples */
+      .example {
+        margin: 0 0 1.1rem;
+      }
+      .example .label {
+        color: var(--text);
+        font-weight: 600;
+        font-size: 0.92rem;
+        margin-bottom: 0.35rem;
+      }
+
+      /* Downloads */
+      .dl-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 1rem;
+      }
+      .dl {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        background: var(--bg-card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 1.15rem;
+        transition:
+          transform 0.12s ease,
+          border-color 0.12s ease;
+      }
+      .dl:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent);
+        text-decoration: none;
+      }
+      .dl b {
+        color: var(--text);
+        font-size: 0.98rem;
+      }
+      .dl span {
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+      .dl .file {
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        color: var(--accent);
+      }
+
+      footer {
+        border-top: 1px solid var(--line);
+        padding: 2.2rem 0 2.6rem;
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+      footer .heart {
+        color: var(--rejected);
+      }
+      .note {
+        background: rgba(251, 191, 36, 0.07);
+        border: 1px solid rgba(251, 191, 36, 0.25);
+        border-radius: 12px;
+        padding: 0.9rem 1.1rem;
+        font-size: 0.9rem;
+        color: #fde68a;
+        max-width: 46rem;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a class="brand" href="#top">
+        <svg width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
+          <rect x="20" y="30" width="60" height="40" rx="6" stroke="#38bdf8" stroke-width="8" fill="none" />
+          <path d="M20 32l30 22 30-22" stroke="#38bdf8" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        smtp-probe
+      </a>
+      <div class="links">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#verdicts">Verdicts</a>
+        <a href="#usage">Usage</a>
+        <a href="#download">Download</a>
+        <a href="https://github.com/sametcn99/rcptx">GitHub</a>
+      </div>
+    </nav>
+
+    <header class="hero wrap" id="top">
+      <h1>smtp-probe</h1>
+      <p class="tag">
+        Smart, asynchronous SMTP reconnaissance &amp; deliverability probing — verify recipients, map MX posture and detect catch-all servers
+        <strong>without sending a single email</strong>.
+      </p>
+
+      <div class="badges">
+        <a href="https://github.com/sametcn99/rcptx/actions/workflows/ci.yml"
+          ><img src="https://github.com/sametcn99/rcptx/actions/workflows/ci.yml/badge.svg" alt="CI status"
+        /></a>
+        <a href="https://github.com/sametcn99/rcptx/releases/latest"
+          ><img src="https://img.shields.io/github/v/release/sametcn99/rcptx?color=blue" alt="latest release"
+        /></a>
+        <img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-green" alt="license" />
+        <img src="https://img.shields.io/badge/rust-1.87%2B-orange" alt="rust version" />
+      </div>
+
+      <div class="cta">
+        <a class="btn primary" href="#download">⬇&nbsp; Download</a>
+        <a class="btn" href="https://github.com/sametcn99/rcptx">★&nbsp; View on GitHub</a>
+        <a class="btn" href="https://github.com/sametcn99/rcptx/releases/latest">🚀&nbsp; Releases</a>
+      </div>
+
+      <div class="install">
+        <code id="install-cmd">cargo install --git https://github.com/sametcn99/rcptx</code>
+        <button class="copy" data-copy="install-cmd" title="Copy to clipboard">copy</button>
+      </div>
+      <p class="platforms">Windows · Linux · macOS — single static binary, no C toolchain required</p>
+
+      <div class="term" role="img" aria-label="Example smtp-probe session">
+        <div class="term-bar"><i></i><i></i><i></i></div>
+        <pre><span class="t-dim">$</span> <span class="t-cmd">smtp-probe -d acme.com</span>
+<span class="t-dim"> acme.com
+──────────────────────────────────────────────────────────────────
+  MX        10 aspmx.l.google.com  |  20 alt1.aspmx.l.google.com
+  Provider  Google Workspace
+  SPF       v=spf1 include:_spf.google.com ~all
+  DMARC     v=DMARC1; p=quarantine
+  Catch-All no</span>
+┌────────────────────┬──────────┬──────┬───────┬─────┬─────┬──────────────┐
+│ Email              ┆ Status   ┆ Code ┆ ESC   ┆ Try ┆ ms  ┆ Message      ┆
+╞════════════════════╪══════════╪══════╪═══════╪═════╪═════╪══════════════╡
+│ careers@acme.com   ┆ <span class="t-green">accepted</span>   ┆ 250  ┆ 2.1.5 ┆ 1   ┆ 143 ┆ 2.1.5 OK     ┆
+│ hr@acme.com        ┆ <span class="t-green">accepted</span>   ┆ 250  ┆ 2.1.5 ┆ 1   ┆ 121 ┆ 2.1.5 OK     ┆
+│ info@acme.com      ┆ <span class="t-cyan">accepted*</span>  ┆ 250  ┆ 2.1.5 ┆ 1   ┆ 128 ┆ 2.1.5 OK     ┆
+│ nobody@acme.com    ┆ <span class="t-red">rejected</span>   ┆ 550  ┆ 5.1.1 ┆ 1   ┆ 118 ┆ User unknown ┆
+│ later@acme.com     ┆ <span class="t-yellow">temporary</span>  ┆ 450  ┆ 4.7.1 ┆ 2   ┆ 402 ┆ Greylisted   ┆
+└────────────────────┴──────────┴──────┴───────┴─────┴─────┴──────────────┘
+<span class="t-dim">Summary: 22 probe(s) across 1 domain(s) — 3 accepted · 1 catch-all* · 17 rejected · 1 temporary — 28.9s</span></pre>
+      </div>
+    </header>
+
+    <main>
+      <section class="wrap" id="features">
+        <h2>Features</h2>
+        <p class="lead">Everything you want from an SMTP recon tool, with the safety rails and politeness built in.</p>
+        <div class="grid">
+          <div class="card">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg>
+            </div>
+            <h3>Fully asynchronous</h3>
+            <p>Tokio-powered concurrency with bounded connections, per-operation timeouts and graceful Ctrl+C draining.</p>
+          </div>
+          <div class="card">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 1l4 4-4 4" />
+                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                <path d="M7 23l-4-4 4-4" />
+                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+              </svg>
+            </div>
+            <h3>Session reuse (RSET)</h3>
+            <p>One connection probes a whole batch of candidates. Dropped mid-batch? It reconnects and resumes from the exact failure.</p>
+          </div>
+          <div class="card">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <path d="M22 4L12 14.01l-3-3" />
+              </svg>
+            </div>
+            <h3>Accurate verdicts</h3>
+            <p>3-digit codes plus RFC 3463 enhanced status codes (5.1.1, 5.7.1, 4.7.1 …) classify each probe precisely.</p>
+          </div>
+          <div class="card">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </svg>
+            </div>
+            <h3>Catch-all detection</h3>
+            <p>Random UUID probes run before scanning; catch-all domains are flagged, and can be skipped entirely.</p>
+          </div>
+          <div class="card">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            </div>
+            <h3>DNS &amp; security recon</h3>
+            <p>MX (null-MX aware), SPF and DMARC in every report, plus provider fingerprinting for 15+ platforms.</p>
+          </div>
+          <div class="card">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </div>
+            <h3>TLS everywhere</h3>
+            <p>
+              Opportunistic / required / disabled STARTTLS, implicit TLS on 465, and <code>--insecure</code> for legacy servers — pure-Rust crypto.
+            </p>
+          </div>
+          <div class="card">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4v6h6" />
+                <path d="M20 20v-6h-6" />
+                <path d="M20 9A8 8 0 0 0 5.64 5.64L4 10m0 4l1.64 4.36A8 8 0 0 0 20 14" />
+              </svg>
+            </div>
+            <h3>Greylist-aware</h3>
+            <p>4xx replies are retried on your schedule; jittered pacing and connection caps keep you under the radar.</p>
+          </div>
+          <div class="card">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6" />
+                <path d="M16 13H8" />
+                <path d="M16 17H8" />
+              </svg>
+            </div>
+            <h3>Four output formats</h3>
+            <p>
+              Human <code>table</code>, <code>json</code> document, streaming <code>jsonl</code> and <code>csv</code> — with an accepted-only filter.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="wrap" id="how-it-works">
+        <h2>How it works</h2>
+        <p class="lead">A five-phase pipeline per domain — no email is ever delivered, the probe stops right after <code>RCPT TO</code>.</p>
+        <div class="pipeline">
+          <div class="step"><b>DNS recon</b><span>MX sorted by preference, SPF, DMARC, provider guess</span></div>
+          <div class="step"><b>Catch-all probe</b><span>Random UUID local-parts test address harvesting</span></div>
+          <div class="step"><b>Candidate probing</b><span>EHLO → STARTTLS → MAIL FROM → RCPT TO → RSET</span></div>
+          <div class="step"><b>Classification</b><span>SMTP code + enhanced status code → verdict</span></div>
+          <div class="step"><b>Report</b><span>table / json / jsonl / csv, streamed or written to file</span></div>
+        </div>
+        <p class="lead" style="margin-top: 1.6rem">
+          Failing over between MX hosts, reconnecting dropped sessions, retrying greylisted candidates, and checking GitHub Releases for updates — all
+          automatic.
+        </p>
+      </section>
+
+      <section class="wrap" id="verdicts">
+        <h2>Verdicts</h2>
+        <p class="lead">Every candidate gets one of seven verdicts, derived from the 3-digit code and the RFC 3463 enhanced status code.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Verdict</th>
+                <th>Trigger</th>
+                <th>Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="chip accepted">accepted</span></td>
+                <td><code>250</code> / <code>251</code></td>
+                <td>Mailbox exists and accepts mail</td>
+              </tr>
+              <tr>
+                <td><span class="chip accepted_catch_all">accepted_catch_all</span></td>
+                <td><code>250</code> on a catch-all domain</td>
+                <td>Accepted — but so is every other address</td>
+              </tr>
+              <tr>
+                <td><span class="chip rejected">rejected</span></td>
+                <td><code>550 5.1.1</code> &amp; friends</td>
+                <td>User unknown / mailbox unavailable</td>
+              </tr>
+              <tr>
+                <td><span class="chip temporary">temporary</span></td>
+                <td><code>4xx</code> (421/450/451/452)</td>
+                <td>Greylisted or rate-limited — try later</td>
+              </tr>
+              <tr>
+                <td><span class="chip policy_blocked">policy_blocked</span></td>
+                <td><code>5.7.x</code>, <code>554</code>, MAIL FROM rejection</td>
+                <td>Anti-enumeration / blocklist policy</td>
+              </tr>
+              <tr>
+                <td><span class="chip indeterminate">indeterminate</span></td>
+                <td><code>252</code></td>
+                <td>Cannot VRFY user, but will accept</td>
+              </tr>
+              <tr>
+                <td><span class="chip error">error</span></td>
+                <td>timeout / TLS / EOF</td>
+                <td>Connection-level failure</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="wrap" id="usage">
+        <h2>Usage</h2>
+        <p class="lead">A few practical recipes. Full reference with <code>smtp-probe --help</code>.</p>
+
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i></div>
+          <pre><span class="t-dim"># HR + executive hunt across a domain list, JSON report of hits only</span>
+<span class="t-dim">$</span> <span class="t-cmd">smtp-probe -D targets.txt -p hr,executive --only-accepted --format json -o hits.json</span>
+
+<span class="t-dim"># Stream accepted addresses as CSV, plausible random sender, custom resolver</span>
+<span class="t-dim">$</span> <span class="t-cmd">cat domains.txt | smtp-probe --stdin -l careers,people,ceo \
+    --auto-mail-from --dns-server 1.1.1.1 --format csv</span>
+
+<span class="t-dim"># Cautious scan of a hardened target: slow pacing, no catch-all waste, greylist retries</span>
+<span class="t-dim">$</span> <span class="t-cmd">smtp-probe -d strict-corp.com -p all -c 1 --delay-ms 2000 --jitter-ms 800 \
+    --max-rcpt-per-conn 3 --stop-on-catch-all --retry-greylist 2 --retry-delay 30</span>
+
+<span class="t-dim"># DNS-only posture check — zero SMTP traffic</span>
+<span class="t-dim">$</span> <span class="t-cmd">smtp-probe mx example.com --format json</span>
+
+<span class="t-dim"># Check for a newer release (also available as --check-update before any run)</span>
+<span class="t-dim">$</span> <span class="t-cmd">smtp-probe check-update</span></pre>
+        </div>
+
+        <p class="lead" style="margin-top: 1.6rem">
+          Exit codes: <code>0</code> success (including Ctrl+C partial runs) · <code>1</code> configuration/runtime error · <code>2</code> outbound
+          port 25 appears blocked.
+        </p>
+      </section>
+
+      <section class="wrap" id="download">
+        <h2>Download</h2>
+        <p class="lead">Static release binaries with SHA-256 checksums for every platform, published by CI on every tag.</p>
+        <div class="dl-grid">
+          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/smtp-probe-x86_64-unknown-linux-gnu.tar.gz">
+            <b>🐧 Linux</b><span>x86_64 · glibc</span><span class="file">smtp-probe-x86_64-unknown-linux-gnu.tar.gz</span>
+          </a>
+          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/smtp-probe-aarch64-apple-darwin.tar.gz">
+            <b>🍎 macOS</b><span>Apple Silicon (M1/M2/M3/M4)</span><span class="file">smtp-probe-aarch64-apple-darwin.tar.gz</span>
+          </a>
+          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/smtp-probe-x86_64-apple-darwin.tar.gz">
+            <b>🍎 macOS</b><span>Intel</span><span class="file">smtp-probe-x86_64-apple-darwin.tar.gz</span>
+          </a>
+          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/smtp-probe-x86_64-pc-windows-msvc.zip">
+            <b>🪟 Windows</b><span>x64</span><span class="file">smtp-probe-x86_64-pc-windows-msvc.zip</span>
+          </a>
+        </div>
+        <p class="lead" style="margin-top: 1.6rem">Or install with cargo:</p>
+        <div class="install">
+          <code id="cargo-cmd">cargo install --git https://github.com/sametcn99/rcptx</code>
+          <button class="copy" data-copy="cargo-cmd" title="Copy to clipboard">copy</button>
+        </div>
+        <div class="note" style="margin-top: 1.8rem">
+          <strong>Ethics:</strong> probe only domains you have a legitimate reason to investigate — your own infrastructure, authorized assessments or
+          deliverability research. Recipient enumeration may be restricted by law or terms of service in your jurisdiction.
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap" style="display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center">
+        <div>
+          <strong style="color: var(--text)">smtp-probe</strong> — built with <span class="heart">♥</span> in Rust by
+          <a href="https://github.com/sametcn99">sametcn99</a> · MIT
+        </div>
+        <div style="margin-left: auto; display: flex; gap: 1rem; flex-wrap: wrap">
+          <a href="https://github.com/sametcn99/rcptx">GitHub</a>
+          <a href="https://github.com/sametcn99/rcptx/releases">Releases</a>
+          <a href="https://github.com/sametcn99/rcptx/issues">Issues</a>
+          <a href="https://github.com/sametcn99/rcptx/actions">CI</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      document.querySelectorAll(".copy").forEach(function (button) {
+        button.addEventListener("click", function () {
+          var source = document.getElementById(button.dataset.copy)
+          var text = source ? source.textContent : ""
+          var done = function () {
+            var original = button.textContent
+            button.textContent = "copied!"
+            setTimeout(function () {
+              button.textContent = original
+            }, 1200)
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done)
+          } else {
+            var area = document.createElement("textarea")
+            area.value = text
+            document.body.appendChild(area)
+            area.select()
+            document.execCommand("copy")
+            document.body.removeChild(area)
+            done()
+          }
+        })
+      })
+    </script>
+  </body>
+</html>

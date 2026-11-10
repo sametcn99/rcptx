@@ -14,9 +14,9 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::cli::ResolvedConfig;
-use crate::dns::{detect_provider, DnsResolver, MxEntry};
-use crate::smtp::client::{next_conn_id, ConnectConfig};
-use crate::smtp::{SmtpConnection, SmtpError, Stage, SmtpReply};
+use crate::dns::{DnsResolver, MxEntry, detect_provider};
+use crate::smtp::client::{ConnectConfig, next_conn_id};
+use crate::smtp::{SmtpConnection, SmtpError, SmtpReply, Stage};
 
 /// Final verdict for one probed candidate.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
@@ -130,8 +130,10 @@ pub async fn run(
     let domains_bar = progress.as_ref().map(|mp| {
         let bar = mp.add(ProgressBar::new(config.targets.len() as u64));
         bar.set_style(
-            ProgressStyle::with_template("[{elapsed_precise}] {bar:28.cyan/blue} {pos}/{len} domains · {msg}")
-                .expect("valid progress template"),
+            ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:28.cyan/blue} {pos}/{len} domains · {msg}",
+            )
+            .expect("valid progress template"),
         );
         bar
     });
@@ -164,7 +166,8 @@ pub async fn run(
     if let Some(bar) = &domains_bar {
         bar.finish_with_message("done");
     }
-    outcome.interrupted = shutdown.load(Ordering::Relaxed) || outcome.reports.iter().any(|r| r.interrupted);
+    outcome.interrupted =
+        shutdown.load(Ordering::Relaxed) || outcome.reports.iter().any(|r| r.interrupted);
     outcome.tcp_attempts = attempts.load(Ordering::Relaxed);
     outcome.tcp_connect_timeouts = timeouts.load(Ordering::Relaxed);
     Ok(outcome)
@@ -189,7 +192,9 @@ async fn scan_domain(
 ) -> Result<DomainReport> {
     let spinner = progress.map(|mp| {
         let sp = mp.add(ProgressBar::new_spinner());
-        sp.set_style(ProgressStyle::with_template("{spinner:.green} {msg}").expect("valid spinner template"));
+        sp.set_style(
+            ProgressStyle::with_template("{spinner:.green} {msg}").expect("valid spinner template"),
+        );
         sp.enable_steady_tick(Duration::from_millis(120));
         sp
     });
@@ -214,17 +219,26 @@ async fn scan_domain(
     let (mx, security) = match &config.mx_host {
         Some(host) => {
             let sec = dns.security(domain).await;
-            (vec![MxEntry { preference: 0, exchange: host.clone() }], sec)
+            (
+                vec![MxEntry {
+                    preference: 0,
+                    exchange: host.clone(),
+                }],
+                sec,
+            )
         }
         None => {
             let (lookup, sec) = futures::join!(dns.mx(domain), dns.security(domain));
             let entries = match lookup {
                 Ok(entries) => entries,
                 Err(e) => {
-                    report
-                        .notes
-                        .push(format!("MX lookup failed: {e:#} — falling back to implicit MX (domain A record)"));
-                    vec![MxEntry { preference: 0, exchange: domain.to_string() }]
+                    report.notes.push(format!(
+                        "MX lookup failed: {e:#} — falling back to implicit MX (domain A record)"
+                    ));
+                    vec![MxEntry {
+                        preference: 0,
+                        exchange: domain.to_string(),
+                    }]
                 }
             };
             (entries, sec)
@@ -235,7 +249,9 @@ async fn scan_domain(
     report.spf = security.spf;
     report.dmarc = security.dmarc;
     if let Some(provider) = &report.provider {
-        report.notes.push(format!("receiving infrastructure looks like {provider} (inferred from MX/SPF)"));
+        report.notes.push(format!(
+            "receiving infrastructure looks like {provider} (inferred from MX/SPF)"
+        ));
     }
 
     let mut usable: Vec<String> = mx
@@ -245,7 +261,9 @@ async fn scan_domain(
         .collect();
     usable.dedup();
     if usable.is_empty() {
-        report.notes.push("domain does not accept mail (null MX or no MX records found)".to_string());
+        report
+            .notes
+            .push("domain does not accept mail (null MX or no MX records found)".to_string());
         set_phase(&spinner, format!("[{domain}] skipped: no usable MX"));
         if let Some(sp) = spinner {
             sp.finish_with_message(format!("[{domain}] skipped: no usable MX"));
@@ -274,7 +292,11 @@ async fn scan_domain(
             }
             set_phase(
                 &spinner,
-                format!("[{domain}] catch-all probe {}/{}", i + 1, config.catch_all_probes),
+                format!(
+                    "[{domain}] catch-all probe {}/{}",
+                    i + 1,
+                    config.catch_all_probes
+                ),
             );
             let email = format!("{}.probe@{domain}", Uuid::new_v4().simple());
             let outcome = prober.probe(&email, &mut rng, shutdown).await;
@@ -289,9 +311,9 @@ async fn scan_domain(
         if probes > 0 {
             if accepted == probes {
                 catch_all = Some(true);
-                report
-                    .notes
-                    .push(format!("catch-all confirmed: {accepted}/{probes} random addresses accepted"));
+                report.notes.push(format!(
+                    "catch-all confirmed: {accepted}/{probes} random addresses accepted"
+                ));
             } else if accepted > 0 {
                 catch_all = Some(false);
                 report.notes.push(format!(
@@ -309,7 +331,9 @@ async fn scan_domain(
             .notes
             .push("candidate probing skipped (--stop-on-catch-all)".to_string());
         if let Some(sp) = spinner {
-            sp.finish_with_message(format!("[{domain}] catch-all domain — candidate probing skipped"));
+            sp.finish_with_message(format!(
+                "[{domain}] catch-all domain — candidate probing skipped"
+            ));
         }
         return Ok(report);
     }
@@ -334,7 +358,16 @@ async fn scan_domain(
         shutdown,
         retry_round: 0,
     };
-    run_round(&ctx, (0..locals.len()).collect(), &slots, &emitted, &done, spinner.clone(), &emit).await;
+    run_round(
+        &ctx,
+        (0..locals.len()).collect(),
+        &slots,
+        &emitted,
+        &done,
+        spinner.clone(),
+        &emit,
+    )
+    .await;
 
     // ------------------------------------------------------------------
     // 4. Greylisting retries
@@ -370,7 +403,16 @@ async fn scan_domain(
             retry_round: round,
             ..ctx
         };
-        run_round(&retry_ctx, pending, &slots, &emitted, &done, spinner.clone(), &emit).await;
+        run_round(
+            &retry_ctx,
+            pending,
+            &slots,
+            &emitted,
+            &done,
+            spinner.clone(),
+            &emit,
+        )
+        .await;
     }
 
     // ------------------------------------------------------------------
@@ -383,9 +425,9 @@ async fn scan_domain(
     let emitted_vec = emitted.into_inner().unwrap();
     let unprobed = slot_vec.iter().filter(|slot| slot.is_none()).count();
     if unprobed > 0 {
-        report
-            .notes
-            .push(format!("{unprobed} candidate(s) not probed (interrupted or mail host unreachable)"));
+        report.notes.push(format!(
+            "{unprobed} candidate(s) not probed (interrupted or mail host unreachable)"
+        ));
     }
     for (slot, was_emitted) in slot_vec.iter().zip(&emitted_vec) {
         if let (Some(result), false) = (slot, was_emitted) {
@@ -399,11 +441,22 @@ async fn scan_domain(
         let accepted = report
             .results
             .iter()
-            .filter(|r| matches!(r.status, ProbeStatus::Accepted | ProbeStatus::AcceptedCatchAll))
+            .filter(|r| {
+                matches!(
+                    r.status,
+                    ProbeStatus::Accepted | ProbeStatus::AcceptedCatchAll
+                )
+            })
             .count();
-        let rejected = report.results.iter().filter(|r| r.status == ProbeStatus::Rejected).count();
+        let rejected = report
+            .results
+            .iter()
+            .filter(|r| r.status == ProbeStatus::Rejected)
+            .count();
         let other = report.results.len() - accepted - rejected;
-        sp.finish_with_message(format!("[{domain}] {accepted} accepted · {rejected} rejected · {other} other"));
+        sp.finish_with_message(format!(
+            "[{domain}] {accepted} accepted · {rejected} rejected · {other} other"
+        ));
     }
     Ok(report)
 }
@@ -449,7 +502,15 @@ async fn run_round(
         .max(1);
     let mut workers = Vec::with_capacity(worker_count);
     for _ in 0..worker_count {
-        workers.push(run_worker(ctx, &queue, slots, emitted, done, spinner.clone(), emit));
+        workers.push(run_worker(
+            ctx,
+            &queue,
+            slots,
+            emitted,
+            done,
+            spinner.clone(),
+            emit,
+        ));
     }
     futures::future::join_all(workers).await;
 }
@@ -467,9 +528,7 @@ async fn run_worker(
     let mut prober = Prober::new(ctx.hosts, ctx.config, ctx.attempts, ctx.timeouts);
     let mut consecutive_failures = 0u32;
 
-    while let Some(job) = {
-        queue.lock().unwrap().pop_front()
-    } {
+    while let Some(job) = { queue.lock().unwrap().pop_front() } {
         if ctx.shutdown.load(Ordering::Relaxed) {
             break;
         }
@@ -501,7 +560,11 @@ async fn run_worker(
             done.fetch_add(1, Ordering::Relaxed);
         }
         if let Some(sp) = &spinner {
-            let phase = if ctx.retry_round == 0 { "probing" } else { "retrying" };
+            let phase = if ctx.retry_round == 0 {
+                "probing"
+            } else {
+                "retrying"
+            };
             sp.set_message(format!(
                 "[{}] {} {} ({}/{})",
                 ctx.domain,
@@ -555,7 +618,12 @@ struct Prober<'a> {
 }
 
 impl<'a> Prober<'a> {
-    fn new(hosts: &'a [String], config: &'a ResolvedConfig, attempts: &'a AtomicU64, timeouts: &'a AtomicU64) -> Self {
+    fn new(
+        hosts: &'a [String],
+        config: &'a ResolvedConfig,
+        attempts: &'a AtomicU64,
+        timeouts: &'a AtomicU64,
+    ) -> Self {
         Self {
             hosts,
             config,
@@ -572,7 +640,15 @@ impl<'a> Prober<'a> {
     async fn cycle(&mut self) {
         self.drop_conn().await;
         self.used = 0;
-        match connect_any(self.hosts, self.config, self.host_idx, self.attempts, self.timeouts).await {
+        match connect_any(
+            self.hosts,
+            self.config,
+            self.host_idx,
+            self.attempts,
+            self.timeouts,
+        )
+        .await
+        {
             Ok((conn, idx)) => {
                 self.host_idx = idx;
                 self.last_host = self.hosts[idx].clone();
@@ -598,7 +674,12 @@ impl<'a> Prober<'a> {
     /// probes have run on it, then reconnects. If the server drops the session
     /// mid-probe (421, timeout, reset), one transparent reconnect-and-resume
     /// is attempted for the same candidate before giving up.
-    async fn probe(&mut self, email: &str, rng: &mut impl Rng, shutdown: &AtomicBool) -> ProbeOutcome {
+    async fn probe(
+        &mut self,
+        email: &str,
+        rng: &mut impl Rng,
+        shutdown: &AtomicBool,
+    ) -> ProbeOutcome {
         sleep_jitter(self.config.delay_ms, self.config.jitter_ms, rng, shutdown).await;
         for _attempt in 0..2 {
             if self.conn.is_none() || self.used >= self.config.max_rcpt_per_conn {
@@ -612,7 +693,8 @@ impl<'a> Prober<'a> {
                 Ok((stage, reply)) => {
                     let latency = started.elapsed();
                     self.used += 1;
-                    let keep = reply.code != 421 && matches!(conn.rset().await, Ok(r) if r.code == 250);
+                    let keep =
+                        reply.code != 421 && matches!(conn.rset().await, Ok(r) if r.code == 250);
                     if !keep {
                         self.drop_conn().await;
                     }
@@ -633,10 +715,12 @@ impl<'a> Prober<'a> {
     }
 
     fn error_outcome(&self) -> ProbeOutcome {
-        let (stage, message) = self
-            .last_err
-            .clone()
-            .unwrap_or_else(|| ("tcp-connect", "no usable connection to any mail exchanger".to_string()));
+        let (stage, message) = self.last_err.clone().unwrap_or_else(|| {
+            (
+                "tcp-connect",
+                "no usable connection to any mail exchanger".to_string(),
+            )
+        });
         ProbeOutcome {
             reply: None,
             error: Some(ErrorInfo { stage, message }),
@@ -664,7 +748,11 @@ async fn connect_any(
             timeout: config.timeout,
             starttls: config.starttls,
             insecure: config.insecure,
-            ehlo_name: if config.random_ehlo { random_ehlo_name() } else { config.ehlo.clone() },
+            ehlo_name: if config.random_ehlo {
+                random_ehlo_name()
+            } else {
+                config.ehlo.clone()
+            },
             implicit_tls: config.port == 465,
         };
         match SmtpConnection::connect(&cfg, next_conn_id()).await {
@@ -760,12 +848,18 @@ fn finalize_result(
 /// Map an SMTP reply (plus its stage and the domain's catch-all state) to a
 /// verdict. Uses both the 3-digit code and the RFC 3463 enhanced code.
 fn classify(stage: Stage, reply: &SmtpReply, catch_all: Option<bool>) -> ProbeStatus {
-    use ProbeStatus::{Accepted, AcceptedCatchAll, Indeterminate, PolicyBlocked, Rejected, Temporary};
+    use ProbeStatus::{
+        Accepted, AcceptedCatchAll, Indeterminate, PolicyBlocked, Rejected, Temporary,
+    };
 
     if stage == Stage::MailFrom {
         // Rejected before we even named a recipient: sender-based policy
         // (SPF, blocklist, anti-enumeration) or a transient throttle.
-        return if reply.code >= 500 { PolicyBlocked } else { Temporary };
+        return if reply.code >= 500 {
+            PolicyBlocked
+        } else {
+            Temporary
+        };
     }
 
     match reply.code {
@@ -783,8 +877,19 @@ fn classify(stage: Stage, reply: &SmtpReply, catch_all: Option<bool>) -> ProbeSt
                 }
             }
             const POLICY_HINTS: &[&str] = &[
-                "policy", "blocked", "block list", "blacklist", "rbl", "dnsbl", "spam", "abuse", "not permitted",
-                "unauthorized", "no relaying", "reputation", "rejected by recipient",
+                "policy",
+                "blocked",
+                "block list",
+                "blacklist",
+                "rbl",
+                "dnsbl",
+                "spam",
+                "abuse",
+                "not permitted",
+                "unauthorized",
+                "no relaying",
+                "reputation",
+                "rejected by recipient",
             ];
             let text = reply.text.to_lowercase();
             if POLICY_HINTS.iter().any(|hint| text.contains(hint)) {
@@ -841,8 +946,18 @@ mod tests {
 
     #[test]
     fn accepted() {
-        assert_eq!(classify(Stage::RcptTo, &reply(&["250 2.1.5 Ok"]), None), ProbeStatus::Accepted);
-        assert_eq!(classify(Stage::RcptTo, &reply(&["251 User not local; will forward"]), None), ProbeStatus::Accepted);
+        assert_eq!(
+            classify(Stage::RcptTo, &reply(&["250 2.1.5 Ok"]), None),
+            ProbeStatus::Accepted
+        );
+        assert_eq!(
+            classify(
+                Stage::RcptTo,
+                &reply(&["251 User not local; will forward"]),
+                None
+            ),
+            ProbeStatus::Accepted
+        );
     }
 
     #[test]
@@ -851,17 +966,28 @@ mod tests {
             classify(Stage::RcptTo, &reply(&["250 Ok"]), Some(true)),
             ProbeStatus::AcceptedCatchAll
         );
-        assert_eq!(classify(Stage::RcptTo, &reply(&["250 Ok"]), Some(false)), ProbeStatus::Accepted);
+        assert_eq!(
+            classify(Stage::RcptTo, &reply(&["250 Ok"]), Some(false)),
+            ProbeStatus::Accepted
+        );
     }
 
     #[test]
     fn unknown_mailbox() {
         assert_eq!(
-            classify(Stage::RcptTo, &reply(&["550 5.1.1 <x@y.z>: Recipient address rejected: User unknown"]), None),
+            classify(
+                Stage::RcptTo,
+                &reply(&["550 5.1.1 <x@y.z>: Recipient address rejected: User unknown"]),
+                None
+            ),
             ProbeStatus::Rejected
         );
         assert_eq!(
-            classify(Stage::RcptTo, &reply(&["550 5.1.10 Requested action not taken: mailbox unavailable"]), None),
+            classify(
+                Stage::RcptTo,
+                &reply(&["550 5.1.10 Requested action not taken: mailbox unavailable"]),
+                None
+            ),
             ProbeStatus::Rejected
         );
     }
@@ -869,15 +995,27 @@ mod tests {
     #[test]
     fn policy_blocks() {
         assert_eq!(
-            classify(Stage::RcptTo, &reply(&["550 5.7.1 Message rejected: Email address is not authorized"]), None),
+            classify(
+                Stage::RcptTo,
+                &reply(&["550 5.7.1 Message rejected: Email address is not authorized"]),
+                None
+            ),
             ProbeStatus::PolicyBlocked
         );
         assert_eq!(
-            classify(Stage::RcptTo, &reply(&["554 Blocked by spamhaus RBL"]), None),
+            classify(
+                Stage::RcptTo,
+                &reply(&["554 Blocked by spamhaus RBL"]),
+                None
+            ),
             ProbeStatus::PolicyBlocked
         );
         assert_eq!(
-            classify(Stage::MailFrom, &reply(&["550 5.7.1 Sender address rejected"]), None),
+            classify(
+                Stage::MailFrom,
+                &reply(&["550 5.7.1 Sender address rejected"]),
+                None
+            ),
             ProbeStatus::PolicyBlocked
         );
     }
@@ -885,7 +1023,11 @@ mod tests {
     #[test]
     fn temporary() {
         assert_eq!(
-            classify(Stage::RcptTo, &reply(&["450 4.7.1 Greylisted, please try again later"]), None),
+            classify(
+                Stage::RcptTo,
+                &reply(&["450 4.7.1 Greylisted, please try again later"]),
+                None
+            ),
             ProbeStatus::Temporary
         );
         assert_eq!(
@@ -893,7 +1035,11 @@ mod tests {
             ProbeStatus::Temporary
         );
         assert_eq!(
-            classify(Stage::MailFrom, &reply(&["450 4.3.2 Service temporarily unavailable"]), None),
+            classify(
+                Stage::MailFrom,
+                &reply(&["450 4.3.2 Service temporarily unavailable"]),
+                None
+            ),
             ProbeStatus::Temporary
         );
     }
@@ -901,7 +1047,11 @@ mod tests {
     #[test]
     fn indeterminate() {
         assert_eq!(
-            classify(Stage::RcptTo, &reply(&["252 Cannot VRFY user, but will accept message"]), None),
+            classify(
+                Stage::RcptTo,
+                &reply(&["252 Cannot VRFY user, but will accept message"]),
+                None
+            ),
             ProbeStatus::Indeterminate
         );
     }
@@ -909,8 +1059,134 @@ mod tests {
     #[test]
     fn plain_5xx_defaults_to_rejected() {
         assert_eq!(
-            classify(Stage::RcptTo, &reply(&["550 Requested action not taken: mailbox unavailable"]), None),
+            classify(
+                Stage::RcptTo,
+                &reply(&["550 Requested action not taken: mailbox unavailable"]),
+                None
+            ),
             ProbeStatus::Rejected
         );
+    }
+
+    #[test]
+    fn forward_acceptance_counts_as_accepted() {
+        assert_eq!(
+            classify(
+                Stage::RcptTo,
+                &reply(&["251 User not local; will forward to <x@y.z>"]),
+                None
+            ),
+            ProbeStatus::Accepted
+        );
+    }
+
+    #[test]
+    fn service_codes_are_temporary() {
+        assert_eq!(
+            classify(
+                Stage::RcptTo,
+                &reply(&["421 4.7.0 Too many connections, try again later"]),
+                None
+            ),
+            ProbeStatus::Temporary
+        );
+        assert_eq!(
+            classify(
+                Stage::RcptTo,
+                &reply(&["451 4.3.0 Requested action aborted"]),
+                None
+            ),
+            ProbeStatus::Temporary
+        );
+    }
+
+    #[test]
+    fn odd_codes_at_rcpt_are_indeterminate() {
+        assert_eq!(
+            classify(
+                Stage::RcptTo,
+                &reply(&["354 End data with <CR><LF>.<CR><LF>"]),
+                None
+            ),
+            ProbeStatus::Indeterminate
+        );
+    }
+
+    fn outcome_from_reply(lines: &[&str]) -> ProbeOutcome {
+        let reply = parse_reply(&lines.iter().map(|l| l.to_string()).collect::<Vec<_>>()).unwrap();
+        ProbeOutcome {
+            reply: Some((Stage::RcptTo, reply)),
+            error: None,
+            latency: Some(Duration::from_millis(7)),
+            host: "mx.example.com".to_string(),
+        }
+    }
+
+    #[test]
+    fn finalize_result_maps_replies() {
+        let result = finalize_result(
+            "example.com",
+            "info",
+            outcome_from_reply(&["250 2.1.5 Ok"]),
+            None,
+            1,
+        );
+        assert_eq!(result.email, "info@example.com");
+        assert_eq!(result.status, ProbeStatus::Accepted);
+        assert_eq!(result.smtp_code, Some(250));
+        assert_eq!(result.enhanced_code.as_deref(), Some("2.1.5"));
+        assert_eq!(result.stage.as_deref(), Some("rcpt-to"));
+        assert_eq!(result.latency_ms, Some(7));
+        assert_eq!(result.mx_host, "mx.example.com");
+        assert_eq!(result.attempts, 1);
+    }
+
+    #[test]
+    fn finalize_result_annotates_mail_from_policy_blocks() {
+        let reply = parse_reply(
+            &["550 5.7.1 Sender address rejected: not authorized"]
+                .iter()
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let outcome = ProbeOutcome {
+            reply: Some((Stage::MailFrom, reply)),
+            error: None,
+            latency: Some(Duration::from_millis(3)),
+            host: "mx.example.com".to_string(),
+        };
+        let result = finalize_result("example.com", "info", outcome, None, 1);
+        assert_eq!(result.status, ProbeStatus::PolicyBlocked);
+        assert!(result.message.contains("MAIL FROM"));
+        assert_eq!(result.stage.as_deref(), Some("mail-from"));
+    }
+
+    #[test]
+    fn finalize_result_maps_transport_errors() {
+        let outcome = ProbeOutcome {
+            reply: None,
+            error: Some(ErrorInfo {
+                stage: "rcpt-to",
+                message: "connection closed by server during rcpt-to".to_string(),
+            }),
+            latency: None,
+            host: "mx.example.com".to_string(),
+        };
+        let result = finalize_result("example.com", "info", outcome, None, 2);
+        assert_eq!(result.status, ProbeStatus::Error);
+        assert_eq!(result.smtp_code, None);
+        assert_eq!(result.stage.as_deref(), Some("rcpt-to"));
+        assert_eq!(result.attempts, 2);
+        assert!(result.message.contains("closed"));
+    }
+
+    #[test]
+    fn random_ehlo_names_are_unique_and_sane() {
+        let first = random_ehlo_name();
+        let second = random_ehlo_name();
+        assert!(first.starts_with("mta-"));
+        assert!(first.ends_with(".probe.local"));
+        assert_ne!(first, second);
     }
 }

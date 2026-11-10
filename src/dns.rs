@@ -2,10 +2,11 @@
 //! SPF/DMARC TXT pre-checks, and mail-infrastructure provider detection.
 
 use std::net::IpAddr;
+use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
-use hickory_resolver::config::{NameServerConfigGroup, ResolverConfig, ResolverOpts};
+use anyhow::{Context, Result, anyhow};
 use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::config::{NameServerConfigGroup, ResolverConfig, ResolverOpts};
 use serde::Serialize;
 
 /// One MX record: an exchange hostname plus its routing preference.
@@ -35,8 +36,9 @@ pub struct DnsResolver {
 
 impl DnsResolver {
     /// Build a resolver. With no server given this uses the system
-    /// configuration; otherwise queries go to `<ip>:53` over UDP with TCP
-    /// fallback handled by hickory.
+    /// configuration; otherwise queries go to `<ip>:53` over UDP. Custom
+    /// servers get aggressive timeouts (2s, single attempt) so a bad
+    /// `--dns-server` fails fast instead of stalling every domain.
     ///
     /// # Errors
     ///
@@ -46,9 +48,11 @@ impl DnsResolver {
         let inner = match server {
             Some(ip) => {
                 let group = NameServerConfigGroup::from_ips_clear(&[ip], 53, true);
-                let config =
-                    ResolverConfig::from_parts(None, Vec::new(), group);
-                TokioAsyncResolver::tokio(config, ResolverOpts::default())
+                let config = ResolverConfig::from_parts(None, Vec::new(), group);
+                let mut options = ResolverOpts::default();
+                options.timeout = Duration::from_secs(2);
+                options.attempts = 1;
+                TokioAsyncResolver::tokio(config, options)
             }
             None => TokioAsyncResolver::tokio_from_system_conf()
                 .context("failed to load the system DNS configuration")?,
@@ -72,7 +76,11 @@ impl DnsResolver {
             .map(|record| {
                 // Normalize casing/trailing dot, but keep "." intact for null MX (RFC 7505).
                 let raw = record.exchange().to_string().to_lowercase();
-                let exchange = if raw == "." { raw } else { raw.trim_end_matches('.').to_string() };
+                let exchange = if raw == "." {
+                    raw
+                } else {
+                    raw.trim_end_matches('.').to_string()
+                };
                 MxEntry {
                     preference: record.preference(),
                     exchange,
@@ -102,13 +110,24 @@ impl DnsResolver {
     }
 
     /// SPF + DMARC posture for a domain (both lookups run concurrently).
+    /// Best-effort: the whole pre-flight is bounded to 5 seconds and returns
+    /// empty posture on timeout — a slow resolver must never stall a scan.
     pub async fn security(&self, domain: &str) -> DomainSecurity {
-        let dmarc_name = format!("_dmarc.{domain}");
-        let (apex_txt, dmarc_txt) = futures::join!(self.txt(domain), self.txt(&dmarc_name));
-        DomainSecurity {
-            spf: apex_txt.into_iter().find(|s| s.to_ascii_lowercase().starts_with("v=spf1")),
-            dmarc: dmarc_txt.into_iter().find(|s| s.to_ascii_lowercase().starts_with("v=dmarc1")),
-        }
+        let lookup = async {
+            let dmarc_name = format!("_dmarc.{domain}");
+            let (apex_txt, dmarc_txt) = futures::join!(self.txt(domain), self.txt(&dmarc_name));
+            DomainSecurity {
+                spf: apex_txt
+                    .into_iter()
+                    .find(|s| s.to_ascii_lowercase().starts_with("v=spf1")),
+                dmarc: dmarc_txt
+                    .into_iter()
+                    .find(|s| s.to_ascii_lowercase().starts_with("v=dmarc1")),
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(5), lookup)
+            .await
+            .unwrap_or_default()
     }
 }
 
@@ -148,4 +167,80 @@ pub fn detect_provider(mx: &[MxEntry], spf: Option<&str>) -> Option<&'static str
     PROVIDERS
         .iter()
         .find_map(|(needle, name)| haystack.contains(needle).then_some(*name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mx(preference: u16, exchange: &str) -> MxEntry {
+        MxEntry {
+            preference,
+            exchange: exchange.to_string(),
+        }
+    }
+
+    #[test]
+    fn providers_are_detected_from_mx_hosts() {
+        assert_eq!(
+            detect_provider(&[mx(5, "aspmx.l.google.com")], None),
+            Some("Google Workspace")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "example-com.mail.protection.outlook.com")], None),
+            Some("Microsoft 365 / Exchange Online")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx.pphosted.com")], None),
+            Some("Proofpoint")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx.ppe-hosted.com")], None),
+            Some("Proofpoint")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "eu.mimecast.com")], None),
+            Some("Mimecast")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "route1.mx.cloudflare.net")], None),
+            Some("Cloudflare Email Routing")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx01.mail.icloud.com")], None),
+            Some("Apple iCloud Mail")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx.yandex.ru")], None),
+            Some("Yandex 360")
+        );
+    }
+
+    #[test]
+    fn providers_are_detected_from_spf_includes() {
+        assert_eq!(
+            detect_provider(&[], Some("v=spf1 include:spf.protection.outlook.com -all")),
+            Some("Microsoft 365 / Exchange Online")
+        );
+        assert_eq!(
+            detect_provider(
+                &[mx(10, "mx1.example.com")],
+                Some("v=spf1 include:_spf.google.com ~all")
+            ),
+            Some("Google Workspace")
+        );
+    }
+
+    #[test]
+    fn unknown_infrastructure_stays_unknown() {
+        assert_eq!(
+            detect_provider(
+                &[mx(10, "mx.example.com")],
+                Some("v=spf1 ip4:10.0.0.1 -all")
+            ),
+            None
+        );
+        assert_eq!(detect_provider(&[], None), None);
+        assert_eq!(detect_provider(&[mx(0, ".")], None), None);
+    }
 }

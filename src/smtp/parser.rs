@@ -61,11 +61,7 @@ pub struct SmtpReply {
 impl SmtpReply {
     /// A short, single-line summary of the reply suitable for reports.
     pub fn summary(&self) -> String {
-        let collapsed: String = self
-            .text
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
+        let collapsed: String = self.text.split_whitespace().collect::<Vec<_>>().join(" ");
         if collapsed.is_empty() {
             return format!("SMTP {}", self.code);
         }
@@ -95,7 +91,11 @@ pub fn parse_enhanced(text: &str) -> Option<EnhancedCode> {
             parts[2].parse::<u8>(),
         ) && matches!(class, 2 | 4 | 5)
         {
-            return Some(EnhancedCode { class, subject, detail });
+            return Some(EnhancedCode {
+                class,
+                subject,
+                detail,
+            });
         }
     }
     None
@@ -144,7 +144,11 @@ pub fn parse_reply(raw: &[String]) -> Result<SmtpReply, ParseError> {
         if is_last {
             code = line_code;
         }
-        texts.push(if line.len() > 4 { line[4..].to_string() } else { String::new() });
+        texts.push(if line.len() > 4 {
+            line[4..].to_string()
+        } else {
+            String::new()
+        });
     }
 
     let text = texts.join(" ");
@@ -175,7 +179,12 @@ mod tests {
 
     #[test]
     fn parses_multiline_ehlo_reply() {
-        let raw = lines(&["250-mail.example.com greets you", "250-PIPELINING", "250-SIZE 10485760", "250 STARTTLS"]);
+        let raw = lines(&[
+            "250-mail.example.com greets you",
+            "250-PIPELINING",
+            "250-SIZE 10485760",
+            "250 STARTTLS",
+        ]);
         let reply = parse_reply(&raw).unwrap();
         assert_eq!(reply.code, 250);
         assert_eq!(reply.lines.len(), 4);
@@ -185,7 +194,10 @@ mod tests {
 
     #[test]
     fn parses_enhanced_status_codes() {
-        let reply = parse_reply(&lines(&["550 5.1.1 <nope@example.com>: Recipient address rejected: User unknown"])).unwrap();
+        let reply = parse_reply(&lines(&[
+            "550 5.1.1 <nope@example.com>: Recipient address rejected: User unknown",
+        ]))
+        .unwrap();
         assert_eq!(reply.code, 550);
         let esc = reply.enhanced.unwrap();
         assert_eq!(esc.to_string(), "5.1.1");
@@ -198,16 +210,32 @@ mod tests {
     fn enhanced_extraction_ignores_ips_and_versions() {
         assert!(parse_enhanced("connection from 192.168.1.1 blocked").is_none());
         assert!(parse_enhanced("v=DMARC1; p=reject").is_none());
-        assert_eq!(parse_enhanced("(5.7.1) policy violation").unwrap().to_string(), "5.7.1");
-        assert_eq!(parse_enhanced("recipient 2.1.5; queued").unwrap().to_string(), "2.1.5");
+        assert_eq!(
+            parse_enhanced("(5.7.1) policy violation")
+                .unwrap()
+                .to_string(),
+            "5.7.1"
+        );
+        assert_eq!(
+            parse_enhanced("recipient 2.1.5; queued")
+                .unwrap()
+                .to_string(),
+            "2.1.5"
+        );
         assert!(parse_enhanced("code 45.1.1").is_none());
     }
 
     #[test]
     fn rejects_malformed_lines() {
-        assert_eq!(parse_reply(&lines(&["hello world"])), Err(ParseError::Malformed("hello world".into())));
+        assert_eq!(
+            parse_reply(&lines(&["hello world"])),
+            Err(ParseError::Malformed("hello world".into()))
+        );
         // Missing final line: middle line uses '-' but is last.
-        assert_eq!(parse_reply(&lines(&["250-PIPELINING"])), Err(ParseError::Malformed("250-PIPELINING".into())));
+        assert_eq!(
+            parse_reply(&lines(&["250-PIPELINING"])),
+            Err(ParseError::Malformed("250-PIPELINING".into()))
+        );
     }
 
     #[test]
@@ -216,8 +244,43 @@ mod tests {
     }
 
     #[test]
+    fn final_line_code_wins_over_mismatched_continuations() {
+        // Some real servers are sloppy; the final line is authoritative.
+        let reply = parse_reply(&lines(&["550-odd mismatch", "250 Ok"])).unwrap();
+        assert_eq!(reply.code, 250);
+        assert_eq!(reply.text, "odd mismatch Ok");
+    }
+
+    #[test]
+    fn out_of_range_codes_are_rejected() {
+        assert!(parse_reply(&lines(&["199 too low"])).is_err());
+        assert!(parse_reply(&lines(&["600 too high"])).is_err());
+        assert!(parse_reply(&lines(&["2x0 not numeric"])).is_err());
+    }
+
+    #[test]
+    fn ehlo_shaped_replies_parse_cleanly() {
+        let reply = parse_reply(&lines(&[
+            "250-mail.example.com",
+            "250-PIPELINING",
+            "250-SIZE 20480000",
+            "250-STARTTLS",
+            "250 ENHANCEDSTATUSCODES",
+        ]))
+        .unwrap();
+        assert_eq!(reply.code, 250);
+        assert_eq!(reply.lines.len(), 5);
+        assert!(reply.text.contains("STARTTLS"));
+        assert!(reply.text.contains("mail.example.com"));
+    }
+
+    #[test]
     fn summary_collapses_and_truncates() {
-        let reply = parse_reply(&lines(&["250-mail.example.com", "250 very   long    spacing"])).unwrap();
+        let reply = parse_reply(&lines(&[
+            "250-mail.example.com",
+            "250 very   long    spacing",
+        ]))
+        .unwrap();
         assert_eq!(reply.summary(), "mail.example.com very long spacing");
 
         let long = "x".repeat(300);

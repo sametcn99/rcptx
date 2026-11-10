@@ -6,7 +6,7 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{ArgAction, Parser, Subcommand};
 
 use crate::output::Format;
@@ -57,7 +57,13 @@ pub struct Cli {
     // SMTP & network
     // -----------------------------------------------------------------
     /// Envelope sender used in MAIL FROM. May be given per-env.
-    #[arg(short = 'f', long, value_name = "EMAIL", default_value = "probe@example.com", env = "SMTP_PROBE_MAIL_FROM")]
+    #[arg(
+        short = 'f',
+        long,
+        value_name = "EMAIL",
+        default_value = "probe@example.com",
+        env = "SMTP_PROBE_MAIL_FROM"
+    )]
     pub mail_from: String,
 
     /// Generate a plausible random sender instead of --mail-from. Optionally pin the domain: --auto-mail-from=mydomain.tld.
@@ -139,6 +145,10 @@ pub struct Cli {
     #[arg(long, default_value_t = 15, value_parser = clap::value_parser!(u64).range(0..=3_600))]
     pub retry_delay: u64,
 
+    /// Check GitHub Releases for a newer version before running (never fatal).
+    #[arg(long, global = true)]
+    pub check_update: bool,
+
     // -----------------------------------------------------------------
     // Filtering & output
     // -----------------------------------------------------------------
@@ -171,6 +181,8 @@ pub enum Command {
         /// Domain to inspect (e.g. example.com).
         domain: String,
     },
+    /// Check GitHub Releases for a newer version and exit.
+    CheckUpdate,
 }
 
 /// Fully-resolved runtime configuration handed to the scanner.
@@ -233,7 +245,9 @@ impl Cli {
         if self.command.is_none() {
             let has_target = self.domain.is_some() || self.domains_file.is_some() || self.stdin;
             if !has_target {
-                bail!("no target given: pass -d/--domain <DOMAIN>, -D/--domains-file <PATH> or --stdin");
+                bail!(
+                    "no target given: pass -d/--domain <DOMAIN>, -D/--domains-file <PATH> or --stdin"
+                );
             }
         }
 
@@ -310,8 +324,8 @@ impl Cli {
             local_parts.extend(presets::resolve(&self.preset)?);
         }
         if let Some(path) = &self.wordlist {
-            let content =
-                std::fs::read_to_string(path).with_context(|| format!("reading wordlist {}", path.display()))?;
+            let content = std::fs::read_to_string(path)
+                .with_context(|| format!("reading wordlist {}", path.display()))?;
             for line in content.lines() {
                 push_local_part(line, &mut local_parts);
             }
@@ -322,7 +336,9 @@ impl Cli {
             }
         }
         if self.command.is_none() && local_parts.is_empty() {
-            bail!("no candidate local-parts to probe (presets / wordlist / --local-parts produced nothing)");
+            bail!(
+                "no candidate local-parts to probe (presets / wordlist / --local-parts produced nothing)"
+            );
         }
 
         let mail_from = match &self.auto_mail_from {
@@ -368,14 +384,14 @@ fn normalize_host(host: &str) -> String {
 }
 
 fn push_local_part(raw: &str, out: &mut Vec<String>) {
-    let part = raw
-        .trim()
-        .trim_start_matches('<')
-        .trim_end_matches('>')
+    let trimmed = raw.trim();
+    let part = trimmed
         .rsplit_once('@')
         .map(|(local, _)| local)
-        .unwrap_or(raw.trim())
+        .unwrap_or(trimmed);
+    let part = part
         .trim()
+        .trim_matches(|c| c == '<' || c == '>')
         .to_lowercase();
     if !part.is_empty() && !part.starts_with('#') && !out.contains(&part) {
         out.push(part);
@@ -388,7 +404,10 @@ fn normalize_target(raw: &str, out: &mut Vec<String>) {
         return;
     }
     let domain = trimmed.rsplit_once('@').map(|(_, d)| d).unwrap_or(trimmed);
-    let domain = normalize_host(domain);
+    let domain = domain
+        .trim()
+        .trim_matches(|c| c == '<' || c == '>' || c == '.')
+        .to_lowercase();
     if domain.is_empty() || domain.chars().any(char::is_whitespace) {
         return;
     }
@@ -407,7 +426,13 @@ fn system_hostname() -> String {
 fn sanitize_hostname(raw: &str) -> String {
     let cleaned: String = raw
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     if cleaned.is_empty() {
         "smtp-probe.local".to_string()
@@ -417,14 +442,48 @@ fn sanitize_hostname(raw: &str) -> String {
 }
 
 const SENDER_FIRST_NAMES: &[&str] = &[
-    "james", "mary", "john", "patricia", "robert", "jennifer", "michael", "linda", "david", "elizabeth", "william",
-    "barbara", "richard", "susan", "joseph", "jessica",
+    "james",
+    "mary",
+    "john",
+    "patricia",
+    "robert",
+    "jennifer",
+    "michael",
+    "linda",
+    "david",
+    "elizabeth",
+    "william",
+    "barbara",
+    "richard",
+    "susan",
+    "joseph",
+    "jessica",
 ];
 const SENDER_LAST_NAMES: &[&str] = &[
-    "smith", "johnson", "williams", "brown", "jones", "garcia", "miller", "davis", "rodriguez", "martinez", "wilson",
-    "anderson", "taylor", "thomas", "moore", "jackson",
+    "smith",
+    "johnson",
+    "williams",
+    "brown",
+    "jones",
+    "garcia",
+    "miller",
+    "davis",
+    "rodriguez",
+    "martinez",
+    "wilson",
+    "anderson",
+    "taylor",
+    "thomas",
+    "moore",
+    "jackson",
 ];
-const SENDER_DOMAINS: &[&str] = &["gmail.com", "outlook.com", "yahoo.com", "hotmail.com", "icloud.com"];
+const SENDER_DOMAINS: &[&str] = &[
+    "gmail.com",
+    "outlook.com",
+    "yahoo.com",
+    "hotmail.com",
+    "icloud.com",
+];
 
 fn generate_mail_from(domain: Option<&str>) -> String {
     use rand::Rng;
@@ -437,4 +496,212 @@ fn generate_mail_from(domain: Option<&str>) -> String {
         .trim_start_matches('@')
         .to_lowercase();
     format!("{first}.{last}{number:04}@{domain}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(std::iter::once("smtp-probe").chain(args.iter().copied()))
+            .expect("cli parses")
+    }
+
+    #[test]
+    fn validation_requires_a_target() {
+        assert!(parse(&[]).validate().is_err());
+    }
+
+    #[test]
+    fn validation_accepts_a_domain() {
+        parse(&["-d", "example.com"]).validate().unwrap();
+    }
+
+    #[test]
+    fn validation_rejects_unknown_presets() {
+        assert!(
+            parse(&["-d", "example.com", "-p", "bogus"])
+                .validate()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn no_presets_requires_other_sources() {
+        assert!(
+            parse(&["-d", "example.com", "--no-presets"])
+                .validate()
+                .is_err()
+        );
+        parse(&["-d", "example.com", "--no-presets", "-l", "hr"])
+            .validate()
+            .unwrap();
+    }
+
+    #[test]
+    fn stop_on_catch_all_requires_catch_all_probes() {
+        assert!(
+            parse(&[
+                "-d",
+                "example.com",
+                "--stop-on-catch-all",
+                "--catch-all-probes",
+                "0"
+            ])
+            .validate()
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn mx_failover_flags_conflict() {
+        assert!(
+            parse(&["-d", "example.com", "--mx-failover", "--no-mx-failover"])
+                .validate()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn targets_are_normalized_and_deduplicated() {
+        let mut targets: Vec<String> = Vec::new();
+        normalize_target("Example.COM.", &mut targets);
+        normalize_target("user@example.com", &mut targets);
+        normalize_target("  # a comment", &mut targets);
+        normalize_target("", &mut targets);
+        normalize_target("example.com", &mut targets);
+        assert_eq!(targets, ["example.com"]);
+
+        let mut mailto: Vec<String> = Vec::new();
+        normalize_target("mailto:hr@corp.example", &mut mailto);
+        assert_eq!(mailto, ["corp.example"]);
+    }
+
+    #[test]
+    fn local_parts_are_normalized_and_deduplicated() {
+        let mut parts: Vec<String> = Vec::new();
+        push_local_part(" HR ", &mut parts);
+        push_local_part("hr", &mut parts);
+        push_local_part("<CTO>@x", &mut parts);
+        push_local_part("# comment", &mut parts);
+        push_local_part("", &mut parts);
+        assert_eq!(parts, ["hr", "cto"]);
+    }
+
+    #[test]
+    fn hostnames_are_sanitized() {
+        // Case is preserved for user-provided EHLO names; the system hostname
+        // is lower-cased separately in system_hostname().
+        assert_eq!(sanitize_hostname("LAPTOP 01\n"), "LAPTOP-01-");
+        assert_eq!(sanitize_hostname(""), "smtp-probe.local");
+        assert_eq!(sanitize_hostname("probe.example.com"), "probe.example.com");
+    }
+
+    #[test]
+    fn generated_senders_are_plausible() {
+        let address = generate_mail_from(None);
+        assert_eq!(address.matches('@').count(), 1);
+        assert!(address.split('@').next().unwrap().contains('.'));
+        let pinned = generate_mail_from(Some("@MyDomain.IO"));
+        assert!(pinned.ends_with("@mydomain.io"));
+        assert!(pinned.starts_with(|c: char| c.is_ascii_alphabetic()));
+    }
+
+    #[test]
+    fn resolve_reads_files_and_merges_candidates() {
+        let dir = std::env::temp_dir();
+        let domains_file = dir.join(format!(
+            "smtp-probe-test-domains-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let wordlist = dir.join(format!(
+            "smtp-probe-test-words-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::write(&domains_file, "# targets\nExample.COM\nhr@corp.example\n\n").unwrap();
+        std::fs::write(&wordlist, "\n# roles\nCEO\nCFO\nJobs\n").unwrap();
+
+        let cli = parse(&[
+            "-D",
+            domains_file.to_str().unwrap(),
+            "-w",
+            wordlist.to_str().unwrap(),
+            "-l",
+            "jobs,cto",
+            "-p",
+            "support",
+            "--mx-host",
+            "MX.Example.COM.",
+            "--catch-all-probes",
+            "3",
+        ]);
+        cli.validate().unwrap();
+        let config = cli.resolve().unwrap();
+
+        assert_eq!(config.targets, ["example.com", "corp.example"]);
+        // Presets come first, then the wordlist and inline parts, all deduped.
+        assert_eq!(config.local_parts.first().unwrap(), "support");
+        assert!(config.local_parts.contains(&"ceo".to_string()));
+        assert!(config.local_parts.contains(&"cfo".to_string()));
+        assert_eq!(
+            config.local_parts.iter().filter(|p| p == &"jobs").count(),
+            1
+        );
+        assert_eq!(config.local_parts.iter().filter(|p| p == &"cto").count(), 1);
+        assert_eq!(config.mx_host.as_deref(), Some("mx.example.com"));
+        assert_eq!(config.catch_all_probes, 3);
+        assert_eq!(config.mail_from, "probe@example.com");
+
+        let _ = std::fs::remove_file(&domains_file);
+        let _ = std::fs::remove_file(&wordlist);
+    }
+
+    #[test]
+    fn resolve_rejects_invalid_mail_from() {
+        assert!(
+            parse(&["-d", "example.com", "-f", "not-an-email"])
+                .resolve()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn resolve_generates_auto_mail_from() {
+        let config = parse(&["-d", "example.com", "--auto-mail-from"])
+            .resolve()
+            .unwrap();
+        assert!(config.mail_from.contains('@'));
+        let config = parse(&["-d", "example.com", "--auto-mail-from=corp.example"])
+            .resolve()
+            .unwrap();
+        assert!(config.mail_from.ends_with("@corp.example"));
+    }
+
+    #[test]
+    fn mx_failover_is_on_by_default() {
+        assert!(parse(&["-d", "example.com"]).effective_mx_failover());
+        assert!(!parse(&["-d", "example.com", "--no-mx-failover"]).effective_mx_failover());
+    }
+
+    #[test]
+    fn subcommands_and_global_flags_parse() {
+        assert!(matches!(
+            parse(&["mx", "example.com"]).command,
+            Some(Command::Mx { .. })
+        ));
+        assert!(matches!(
+            parse(&["check-update"]).command,
+            Some(Command::CheckUpdate)
+        ));
+        assert!(
+            parse(&["mx", "example.com", "--format", "json"])
+                .validate()
+                .is_ok()
+        );
+        assert!(parse(&["-d", "example.com", "--check-update"]).check_update);
+        assert_eq!(
+            parse(&["-d", "example.com", "--starttls", "required"]).starttls,
+            StarttlsMode::Required
+        );
+    }
 }

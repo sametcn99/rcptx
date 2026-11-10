@@ -3,7 +3,7 @@
 //! Presets are selected with `-p/--preset` as a comma-separated list
 //! (`hr,general`). The special preset `all` combines every category.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 /// Recruiting / people-operations mailboxes.
 pub const HR: &[&str] = &[
@@ -25,13 +25,23 @@ pub const HR: &[&str] = &[
 ];
 
 /// General-purpose public mailboxes.
-pub const GENERAL: &[&str] = &["info", "contact", "hello", "office", "mail", "press", "media"];
+pub const GENERAL: &[&str] = &[
+    "info", "contact", "hello", "office", "mail", "press", "media",
+];
 
 /// Customer support and service desks.
 pub const SUPPORT: &[&str] = &["support", "help", "helpdesk", "service", "billing", "sales"];
 
 /// Technical / administrative role accounts (RFC 2142 flavored).
-pub const TECH: &[&str] = &["admin", "security", "webmaster", "postmaster", "hostmaster", "devops", "it"];
+pub const TECH: &[&str] = &[
+    "admin",
+    "security",
+    "webmaster",
+    "postmaster",
+    "hostmaster",
+    "devops",
+    "it",
+];
 
 /// Executive / leadership aliases.
 pub const EXECUTIVE: &[&str] = &[
@@ -91,13 +101,18 @@ pub fn resolve(spec: &str) -> Result<Vec<String>> {
             }
         } else {
             let group = lookup(&name).ok_or_else(|| {
-                anyhow!("unknown preset '{token}' (valid presets: {})", PRESET_NAMES.join(", "))
+                anyhow!(
+                    "unknown preset '{token}' (valid presets: {})",
+                    PRESET_NAMES.join(", ")
+                )
             })?;
             push_all(&mut out, group);
         }
     }
     if out.is_empty() {
-        return Err(anyhow!("preset specification '{spec}' produced no local-parts"));
+        return Err(anyhow!(
+            "preset specification '{spec}' produced no local-parts"
+        ));
     }
     Ok(out)
 }
@@ -109,7 +124,10 @@ mod tests {
     #[test]
     fn resolves_single_preset() {
         let parts = resolve("support").unwrap();
-        assert_eq!(parts, SUPPORT.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            parts,
+            SUPPORT.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+        );
     }
 
     #[test]

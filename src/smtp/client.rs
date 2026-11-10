@@ -3,8 +3,8 @@
 //! `MAIL FROM` / `RCPT TO` / `RSET` probing primitives used by the scanner.
 
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -14,12 +14,12 @@ use rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme
 use thiserror::Error;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tokio_rustls::client::TlsStream;
 use tokio_rustls::TlsConnector;
+use tokio_rustls::client::TlsStream;
 use webpki_roots::TLS_SERVER_ROOTS;
 
-use crate::smtp::parser::{self, ParseError, SmtpReply};
 use crate::smtp::StarttlsMode;
+use crate::smtp::parser::{self, ParseError, SmtpReply};
 
 /// Tracing target used for raw SMTP transcript lines (shown with `-v`).
 pub const TRANSCRIPT_TARGET: &str = "smtp_probe::transcript";
@@ -75,7 +75,9 @@ impl Stage {
 #[derive(Debug, Error)]
 pub enum SmtpError {
     /// The outbound TCP connection timed out (possible port-25 egress block).
-    #[error("TCP connect to {host}:{port} timed out after {secs}s (outbound port {port} may be blocked)")]
+    #[error(
+        "TCP connect to {host}:{port} timed out after {secs}s (outbound port {port} may be blocked)"
+    )]
     ConnectTimeout {
         /// Host that was attempted.
         host: String,
@@ -152,7 +154,9 @@ impl SmtpError {
     /// The protocol stage this error occurred at, when known.
     pub fn stage(&self) -> Option<&'static str> {
         match self {
-            SmtpError::ConnectTimeout { .. } | SmtpError::Connect { .. } => Some(Stage::TcpConnect.as_str()),
+            SmtpError::ConnectTimeout { .. } | SmtpError::Connect { .. } => {
+                Some(Stage::TcpConnect.as_str())
+            }
             SmtpError::Timeout { stage, .. }
             | SmtpError::Closed { stage }
             | SmtpError::Protocol { stage, .. }
@@ -204,7 +208,11 @@ enum Stream {
 }
 
 impl AsyncRead for Stream {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         match self.get_mut() {
             Stream::Plain(stream) => Pin::new(stream).poll_read(cx, buf),
             Stream::Tls(stream) => Pin::new(stream.as_mut()).poll_read(cx, buf),
@@ -213,7 +221,11 @@ impl AsyncRead for Stream {
 }
 
 impl AsyncWrite for Stream {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
         match self.get_mut() {
             Stream::Plain(stream) => Pin::new(stream).poll_write(cx, buf),
             Stream::Tls(stream) => Pin::new(stream.as_mut()).poll_write(cx, buf),
@@ -290,16 +302,25 @@ impl SmtpConnection {
         if !cfg.implicit_tls && cfg.starttls != StarttlsMode::Disabled {
             let offered = capabilities.iter().any(|cap| cap == "STARTTLS");
             if offered {
-                send_line(reader.get_mut(), "STARTTLS", Stage::StartTls, cfg.timeout, conn_id).await?;
-                let reply = read_reply_from(&mut reader, Stage::StartTls, cfg.timeout, conn_id).await?;
+                send_line(
+                    reader.get_mut(),
+                    "STARTTLS",
+                    Stage::StartTls,
+                    cfg.timeout,
+                    conn_id,
+                )
+                .await?;
+                let reply =
+                    read_reply_from(&mut reader, Stage::StartTls, cfg.timeout, conn_id).await?;
                 if reply.code == 220 {
                     let plain = match reader.into_inner() {
                         Stream::Plain(stream) => stream,
                         Stream::Tls(_) => {
                             return Err(SmtpError::Protocol {
                                 stage: Stage::StartTls.as_str(),
-                                message: "STARTTLS offered on an already-encrypted session".to_string(),
-                            })
+                                message: "STARTTLS offered on an already-encrypted session"
+                                    .to_string(),
+                            });
                         }
                     };
                     let (stream, summary) = tls_upgrade(plain, cfg, conn_id).await?;
@@ -348,7 +369,14 @@ impl SmtpConnection {
     ///
     /// Returns [`SmtpError`] on transport failure or timeout.
     pub async fn cmd(&mut self, line: &str, stage: Stage) -> Result<SmtpReply, SmtpError> {
-        send_line(self.reader.get_mut(), line, stage, self.timeout, self.conn_id).await?;
+        send_line(
+            self.reader.get_mut(),
+            line,
+            stage,
+            self.timeout,
+            self.conn_id,
+        )
+        .await?;
         read_reply_from(&mut self.reader, stage, self.timeout, self.conn_id).await
     }
 
@@ -360,12 +388,20 @@ impl SmtpConnection {
     ///
     /// Returns [`SmtpError`] on transport failure; SMTP-level rejections are
     /// returned as successful replies with 4xx/5xx codes.
-    pub async fn probe_rcpt(&mut self, mail_from: &str, rcpt_to: &str) -> Result<(Stage, SmtpReply), SmtpError> {
-        let mail = self.cmd(&format!("MAIL FROM:<{mail_from}>"), Stage::MailFrom).await?;
+    pub async fn probe_rcpt(
+        &mut self,
+        mail_from: &str,
+        rcpt_to: &str,
+    ) -> Result<(Stage, SmtpReply), SmtpError> {
+        let mail = self
+            .cmd(&format!("MAIL FROM:<{mail_from}>"), Stage::MailFrom)
+            .await?;
         if mail.code >= 400 {
             return Ok((Stage::MailFrom, mail));
         }
-        let rcpt = self.cmd(&format!("RCPT TO:<{rcpt_to}>"), Stage::RcptTo).await?;
+        let rcpt = self
+            .cmd(&format!("RCPT TO:<{rcpt_to}>"), Stage::RcptTo)
+            .await?;
         Ok((Stage::RcptTo, rcpt))
     }
 
@@ -414,7 +450,13 @@ async fn tcp_connect(cfg: &ConnectConfig) -> Result<TcpStream, SmtpError> {
     }
 }
 
-async fn send_line(stream: &mut Stream, line: &str, stage: Stage, timeout: Duration, conn_id: u64) -> Result<(), SmtpError> {
+async fn send_line(
+    stream: &mut Stream,
+    line: &str,
+    stage: Stage,
+    timeout: Duration,
+    conn_id: u64,
+) -> Result<(), SmtpError> {
     tracing::debug!(target: TRANSCRIPT_TARGET, conn = conn_id, ">>> {line}");
     let framed = format!("{line}\r\n");
     let write = async {
@@ -463,7 +505,7 @@ async fn read_reply_from(
                 return Err(SmtpError::Timeout {
                     stage: stage.as_str(),
                     secs: timeout.as_secs().max(1),
-                })
+                });
             }
         }
     }
@@ -486,7 +528,11 @@ fn is_final_line(line: &str) -> bool {
         && (bytes.len() == 3 || bytes[3] == b' ')
 }
 
-async fn ehlo_exchange_on(reader: &mut BufReader<Stream>, cfg: &ConnectConfig, conn_id: u64) -> Result<Vec<String>, SmtpError> {
+async fn ehlo_exchange_on(
+    reader: &mut BufReader<Stream>,
+    cfg: &ConnectConfig,
+    conn_id: u64,
+) -> Result<Vec<String>, SmtpError> {
     let mut reply = ehlo_or_helo(reader, cfg, "EHLO", conn_id).await?;
     if reply.code != 250 {
         reply = ehlo_or_helo(reader, cfg, "HELO", conn_id).await?;
@@ -504,14 +550,28 @@ async fn ehlo_exchange_on(reader: &mut BufReader<Stream>, cfg: &ConnectConfig, c
         .lines
         .iter()
         .skip(1)
-        .filter_map(|line| line.get(4..))
-        .filter_map(|rest| rest.split_whitespace().next())
-        .filter(|keyword| !keyword.is_empty())
-        .map(|keyword| keyword.to_ascii_uppercase())
+        .filter_map(|line| capability_keyword(line))
         .collect())
 }
 
-async fn ehlo_or_helo(reader: &mut BufReader<Stream>, cfg: &ConnectConfig, verb: &str, conn_id: u64) -> Result<SmtpReply, SmtpError> {
+/// Extract the upper-cased capability keyword from an EHLO line such as
+/// `250-PIPELINING` or `250 SIZE 10485760`. Returns `None` for bare `250`.
+fn capability_keyword(line: &str) -> Option<String> {
+    let rest = line.get(4..)?;
+    let keyword = rest.split_whitespace().next()?;
+    if keyword.is_empty() {
+        None
+    } else {
+        Some(keyword.to_ascii_uppercase())
+    }
+}
+
+async fn ehlo_or_helo(
+    reader: &mut BufReader<Stream>,
+    cfg: &ConnectConfig,
+    verb: &str,
+    conn_id: u64,
+) -> Result<SmtpReply, SmtpError> {
     send_line(
         reader.get_mut(),
         &format!("{verb} {}", cfg.ehlo_name),
@@ -542,10 +602,18 @@ fn map_io_error(e: std::io::Error, stage: Stage) -> SmtpError {
 // TLS
 // ---------------------------------------------------------------------------
 
-async fn tls_upgrade(tcp: TcpStream, cfg: &ConnectConfig, conn_id: u64) -> Result<(TlsStream<TcpStream>, TlsSummary), SmtpError> {
+async fn tls_upgrade(
+    tcp: TcpStream,
+    cfg: &ConnectConfig,
+    conn_id: u64,
+) -> Result<(TlsStream<TcpStream>, TlsSummary), SmtpError> {
     let connector = TlsConnector::from(tls_client_config(cfg.insecure));
-    let server_name = ServerName::try_from(cfg.host.clone())
-        .map_err(|e| SmtpError::Tls(format!("invalid server name {host:?}: {e}", host = cfg.host)))?;
+    let server_name = ServerName::try_from(cfg.host.clone()).map_err(|e| {
+        SmtpError::Tls(format!(
+            "invalid server name {host:?}: {e}",
+            host = cfg.host
+        ))
+    })?;
     match tokio::time::timeout(cfg.timeout, connector.connect(server_name, tcp)).await {
         Ok(Ok(stream)) => {
             let version = stream
@@ -576,14 +644,18 @@ async fn tls_upgrade(tcp: TcpStream, cfg: &ConnectConfig, conn_id: u64) -> Resul
     }
 }
 
-fn tls_client_config(insecure: bool) -> Arc<ClientConfig> {
+pub(crate) fn tls_client_config(insecure: bool) -> Arc<ClientConfig> {
     static VERIFYING: std::sync::OnceLock<Arc<ClientConfig>> = std::sync::OnceLock::new();
     static INSECURE: std::sync::OnceLock<Arc<ClientConfig>> = std::sync::OnceLock::new();
 
     if insecure {
-        INSECURE.get_or_init(|| Arc::new(build_client_config(true))).clone()
+        INSECURE
+            .get_or_init(|| Arc::new(build_client_config(true)))
+            .clone()
     } else {
-        VERIFYING.get_or_init(|| Arc::new(build_client_config(false))).clone()
+        VERIFYING
+            .get_or_init(|| Arc::new(build_client_config(false)))
+            .clone()
     }
 }
 
@@ -656,5 +728,110 @@ impl ServerCertVerifier for AcceptAnyServerCert {
             SignatureScheme::ED25519,
             SignatureScheme::ED448,
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn final_lines_are_detected() {
+        assert!(is_final_line("250 OK"));
+        assert!(is_final_line("250"));
+        assert!(is_final_line("220 mx.example.com ESMTP ready"));
+        assert!(!is_final_line("250-PIPELINING"));
+        assert!(!is_final_line("250-"));
+        assert!(!is_final_line("abc"));
+        assert!(!is_final_line(""));
+    }
+
+    #[test]
+    fn capability_keywords_are_extracted() {
+        assert_eq!(
+            capability_keyword("250-PIPELINING").as_deref(),
+            Some("PIPELINING")
+        );
+        assert_eq!(
+            capability_keyword("250-SIZE 10485760").as_deref(),
+            Some("SIZE")
+        );
+        assert_eq!(
+            capability_keyword("250 STARTTLS").as_deref(),
+            Some("STARTTLS")
+        );
+        assert_eq!(capability_keyword("250"), None);
+        assert_eq!(capability_keyword("250 "), None);
+        assert_eq!(
+            capability_keyword("250-enhancedstatuscodes").as_deref(),
+            Some("ENHANCEDSTATUSCODES")
+        );
+    }
+
+    #[test]
+    fn stages_have_stable_names() {
+        assert_eq!(Stage::TcpConnect.as_str(), "tcp-connect");
+        assert_eq!(Stage::Banner.as_str(), "banner");
+        assert_eq!(Stage::Ehlo.as_str(), "ehlo");
+        assert_eq!(Stage::StartTls.as_str(), "starttls");
+        assert_eq!(Stage::TlsHandshake.as_str(), "tls-handshake");
+        assert_eq!(Stage::MailFrom.as_str(), "mail-from");
+        assert_eq!(Stage::RcptTo.as_str(), "rcpt-to");
+        assert_eq!(Stage::Rset.as_str(), "rset");
+        assert_eq!(Stage::Quit.as_str(), "quit");
+    }
+
+    #[test]
+    fn connect_timeouts_are_recognized() {
+        let timeout = SmtpError::ConnectTimeout {
+            host: "mx.example.com".into(),
+            port: 25,
+            secs: 10,
+        };
+        assert!(timeout.is_connect_timeout());
+        assert_eq!(timeout.stage(), Some("tcp-connect"));
+
+        let refused = SmtpError::Connect {
+            host: "mx.example.com".into(),
+            port: 25,
+            source: std::io::Error::other("connection refused"),
+        };
+        assert!(!refused.is_connect_timeout());
+        assert_eq!(refused.stage(), Some("tcp-connect"));
+
+        assert_eq!(SmtpError::StarttlsUnavailable.stage(), Some("starttls"));
+        assert_eq!(SmtpError::Tls("boom".into()).stage(), Some("tls-handshake"));
+        assert_eq!(
+            SmtpError::Closed {
+                stage: Stage::RcptTo.as_str()
+            }
+            .stage(),
+            Some("rcpt-to")
+        );
+    }
+
+    #[test]
+    fn tls_configs_are_cached_per_policy() {
+        // Building both configurations exercises the rustls-rustcrypto provider.
+        let verifying = tls_client_config(false);
+        let insecure = tls_client_config(true);
+        assert!(!Arc::ptr_eq(&verifying, &insecure));
+        assert!(Arc::ptr_eq(&verifying, &tls_client_config(false)));
+        assert!(Arc::ptr_eq(&insecure, &tls_client_config(true)));
+    }
+
+    #[test]
+    fn implicit_tls_is_signalled_by_config() {
+        let cfg = ConnectConfig {
+            host: "mx.example.com".into(),
+            port: 465,
+            timeout: Duration::from_secs(5),
+            starttls: StarttlsMode::Required,
+            insecure: false,
+            ehlo_name: "probe.local".into(),
+            implicit_tls: true,
+        };
+        assert!(cfg.implicit_tls);
+        assert_eq!(cfg.port, 465);
     }
 }
