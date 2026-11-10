@@ -144,24 +144,68 @@ pub fn detect_provider(mx: &[MxEntry], spf: Option<&str>) -> Option<&'static str
     }
     let haystack = haystack.to_ascii_lowercase();
 
+    // Fingerprints are matched against MX hostnames plus the SPF record, in
+    // order — put more specific needles before generic ones within a vendor.
     const PROVIDERS: &[(&str, &str)] = &[
-        ("protection.outlook.com", "Microsoft 365 / Exchange Online"),
-        ("outlook.com", "Microsoft 365 / Exchange Online"),
-        ("google.com", "Google Workspace"),
-        ("googlemail.com", "Google Workspace"),
+        // Secure email gateways / email security services
         ("ppe-hosted.com", "Proofpoint"),
         ("pphosted.com", "Proofpoint"),
         ("ppops.net", "Proofpoint"),
         ("mimecast.com", "Mimecast"),
-        ("barracudanetworks.com", "Barracuda"),
-        ("messagelabs.com", "Symantec MessageLabs"),
+        ("barracudanetworks.com", "Barracuda Email Security"),
+        ("cudamail.com", "Barracuda Email Security"),
+        ("iphmx.com", "Cisco Email Security (IronPort)"),
+        ("messagelabs.com", "Symantec / Broadcom MessageLabs"),
+        ("trendmicro.com", "Trend Micro Email Security"),
+        ("spamd.one", "Sophos Email"),
+        ("vadesecure.com", "Vade for Email"),
+        ("hornetsecurity.com", "Hornetsecurity 365 Total Protection"),
+        ("abnormal.ai", "Abnormal Security"),
+        ("avanan.com", "Check Point Harmony Email (Avanan)"),
+        ("checkpoint.com", "Check Point Harmony Email (Avanan)"),
+        ("appriver.com", "AppRiver"),
+        ("mailassure.com", "N-able Mail Assure (SpamExperts)"),
+        ("spamexperts.com", "N-able Mail Assure (SpamExperts)"),
+        ("reflexion.net", "Reflexion Email Security"),
+        ("retarus.com", "Retarus"),
+        ("retarus.de", "Retarus"),
+        // Cloud productivity suites
+        ("protection.outlook.com", "Microsoft 365 / Exchange Online"),
+        ("outlook.com", "Microsoft 365 / Exchange Online"),
+        ("google.com", "Google Workspace"),
+        ("googlemail.com", "Google Workspace"),
+        ("psmtp.com", "Google Postini (legacy Message Security)"),
         ("zoho", "Zoho Mail"),
-        ("mx.cloudflare.net", "Cloudflare Email Routing"),
         ("icloud.com", "Apple iCloud Mail"),
         ("yandex", "Yandex 360"),
         ("amazonaws.com", "Amazon WorkMail / SES"),
-        ("ovh.net", "OVHcloud"),
+        ("aliyun", "Alibaba Cloud Mail (Qiye)"),
+        ("qq.com", "QQ Mail / Tencent Exmail"),
+        ("163.com", "NetEase Mail"),
+        ("126.com", "NetEase Mail"),
+        ("naver.com", "Naver Mail"),
+        // Consumer & shared-hosting mail
+        ("messagingengine.com", "Fastmail"),
+        ("protonmail.ch", "Proton Mail"),
+        ("protonmail.com", "Proton Mail"),
+        ("gmx.net", "GMX"),
+        ("gmx.com", "GMX"),
+        ("emailsrvr.com", "Rackspace Email"),
         ("secureserver.net", "GoDaddy"),
+        ("privateemail.com", "Namecheap Private Email"),
+        ("hostinger.com", "Hostinger Email"),
+        ("hostgator.com", "HostGator"),
+        ("bluehost.com", "Bluehost"),
+        ("rzone.de", "STRATO AG"),
+        ("kundenserver.de", "IONOS by 1&1"),
+        ("perfora.net", "IONOS by 1&1"),
+        ("ovh.net", "OVHcloud"),
+        ("mail.gandi.net", "Gandi Mail"),
+        ("oxcs.net", "Open-Xchange (hosted)"),
+        // Forwarding services
+        ("mx.cloudflare.net", "Cloudflare Email Routing"),
+        ("improvmx.com", "ImprovMX (forwarding)"),
+        ("forwardemail.net", "Forward Email (forwarding)"),
     ];
 
     PROVIDERS
@@ -242,5 +286,151 @@ mod tests {
         );
         assert_eq!(detect_provider(&[], None), None);
         assert_eq!(detect_provider(&[mx(0, ".")], None), None);
+    }
+
+    #[test]
+    fn security_gateway_providers_are_detected() {
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.ess.barracudanetworks.com")], None),
+            Some("Barracuda Email Security")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.cudamail.com")], None),
+            Some("Barracuda Email Security")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.iphmx.com")], None),
+            Some("Cisco Email Security (IronPort)")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "a3456.hes.trendmicro.com")], None),
+            Some("Trend Micro Email Security")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "eu1.spamd.one")], None),
+            Some("Sophos Email")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.vadesecure.com")], None),
+            Some("Vade for Email")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.hornetsecurity.com")], None),
+            Some("Hornetsecurity 365 Total Protection")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "inbound.abnormal.ai")], None),
+            Some("Abnormal Security")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx.avanan.com")], None),
+            Some("Check Point Harmony Email (Avanan)")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "gw.checkpoint.com")], None),
+            Some("Check Point Harmony Email (Avanan)")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mail.appriver.com")], None),
+            Some("AppRiver")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.mailassure.com")], None),
+            Some("N-able Mail Assure (SpamExperts)")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx.spamexperts.com")], None),
+            Some("N-able Mail Assure (SpamExperts)")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx.reflexion.net")], None),
+            Some("Reflexion Email Security")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.retarus.de")], None),
+            Some("Retarus")
+        );
+    }
+
+    #[test]
+    fn regional_and_hosting_providers_are_detected() {
+        assert_eq!(
+            detect_provider(&[mx(10, "in1-smtp.messagingengine.com")], None),
+            Some("Fastmail")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mail.protonmail.ch")], None),
+            Some("Proton Mail")
+        );
+        assert_eq!(detect_provider(&[mx(10, "gmx.net")], None), Some("GMX"));
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.emailsrvr.com")], None),
+            Some("Rackspace Email")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx01.privateemail.com")], None),
+            Some("Namecheap Private Email")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.hostinger.com")], None),
+            Some("Hostinger Email")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.hostgator.com")], None),
+            Some("HostGator")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx01.rzone.de")], None),
+            Some("STRATO AG")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx00.kundenserver.de")], None),
+            Some("IONOS by 1&1")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "smtp.perfora.net")], None),
+            Some("IONOS by 1&1")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "spool.mail.gandi.net")], None),
+            Some("Gandi Mail")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mxbiz1.qq.com")], None),
+            Some("QQ Mail / Tencent Exmail")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx.qiye.aliyun.com")], None),
+            Some("Alibaba Cloud Mail (Qiye)")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx.naver.com")], None),
+            Some("Naver Mail")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.psmtp.com")], None),
+            Some("Google Postini (legacy Message Security)")
+        );
+    }
+
+    #[test]
+    fn forwarding_services_are_detected() {
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.improvmx.com")], None),
+            Some("ImprovMX (forwarding)")
+        );
+        assert_eq!(
+            detect_provider(&[mx(10, "mx1.forwardemail.net")], None),
+            Some("Forward Email (forwarding)")
+        );
+    }
+
+    #[test]
+    fn more_specific_fingerprints_win_within_a_vendor() {
+        // Both needles map to the same vendor, but the specific one matches first.
+        assert_eq!(
+            detect_provider(&[mx(10, "example-com.mail.protection.outlook.com")], None),
+            Some("Microsoft 365 / Exchange Online")
+        );
     }
 }

@@ -72,8 +72,10 @@ Summary: 22 probe(s) across 1 domain(s) — 3 accepted · 0 catch-all* · 19 rej
 - **Catch-all detection** via random UUID local-parts before candidate
   scanning; `--stop-on-catch-all` skips hopeless scans.
 - **DNS & security recon**: MX (sorted, null-MX aware), SPF, DMARC and a
-  provider guess (Google Workspace, Microsoft 365, Proofpoint, Mimecast,
-  Barracuda, Cloudflare, iCloud, …). Custom resolver via `--dns-server`.
+  provider guess across 40+ platforms — Google Workspace, Microsoft 365,
+  Proofpoint, Mimecast, Barracuda, Abnormal, Check Point (Avanan), Cisco
+  IronPort, Sophos, Vade, Trend Micro, Hornetsecurity, Cloudflare, Fastmail,
+  Proton, Rackspace, and more. Custom resolver via `--dns-server`.
 - **Greylisting support**: `4xx` replies are retried (`--retry-greylist`,
   `--retry-delay`).
 - **Anti-blocking posture**: `--delay-ms` + `--jitter-ms` jittered pacing,
