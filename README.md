@@ -8,6 +8,7 @@
 [![Release](https://github.com/sametcn99/rcptx/actions/workflows/release.yml/badge.svg)](https://github.com/sametcn99/rcptx/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/sametcn99/rcptx?color=blue)](https://github.com/sametcn99/rcptx/releases/latest)
 [![Made with Rust](https://img.shields.io/badge/made%20with-Rust-orange)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
 
 [Website](https://sametcn99.github.io/rcptx/) · [Releases](https://github.com/sametcn99/rcptx/releases) · [Issues](https://github.com/sametcn99/rcptx/issues) · [Usage guide](#usage-guide)
 
@@ -235,6 +236,10 @@ Probe only domains you have a legitimate reason to investigate (your own
 infrastructure, authorized assessments, deliverability research). Recipient
 enumeration may be restricted by law or terms of service in your
 jurisdiction. Be gentle: the rate-limit defaults exist to keep you polite.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
 
 ---
 

@@ -49,7 +49,7 @@ jobs:
           mkdir -p "$stage"
           cp "target/${{ matrix.target }}/release/rcptx" "$stage/"
           strip "$stage/rcptx" || true
-          cp README.md LICENSE-MIT LICENSE-APACHE "$stage/"
+          cp README.md LICENSE "$stage/"
           tar -czf "rcptx-${{ matrix.target }}.tar.gz" "$stage"
           sha256sum "rcptx-${{ matrix.target }}.tar.gz" > "rcptx-${{ matrix.target }}.tar.gz.sha256"
 
@@ -60,7 +60,7 @@ jobs:
           $stage = "rcptx-${{ matrix.target }}"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/rcptx.exe" $stage
-          Copy-Item README.md, LICENSE-MIT, LICENSE-APACHE $stage
+          Copy-Item README.md, LICENSE $stage
           Compress-Archive -Path $stage -DestinationPath "rcptx-${{ matrix.target }}.zip" -Force
           $hash = (Get-FileHash "rcptx-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  rcptx-${{ matrix.target }}.zip" | Out-File -Encoding ascii "rcptx-${{ matrix.target }}.zip.sha256"

@@ -1,9 +1,9 @@
 [package]
 name = "rcptx"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "rcptx — smart asynchronous SMTP recipient reconnaissance, MX diagnostics and catch-all detection"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/sametcn99/rcptx"
 homepage = "https://sametcn99.github.io/rcptx/"
 documentation = "https://sametcn99.github.io/rcptx/"
