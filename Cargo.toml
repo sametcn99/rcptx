@@ -1,0 +1,52 @@
+[package]
+name = "smtp-probe"
+version = "0.1.0"
+edition = "2024"
+description = "Smart asynchronous SMTP recipient reconnaissance, MX diagnostics and catch-all detection"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sametcn99/rcptx"
+readme = "README.md"
+keywords = ["smtp", "email", "deliverability", "mx", "reconnaissance"]
+categories = ["command-line-utilities", "network-programming"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
+# CLI parsing
+clap = { version = "4", features = ["derive", "env"] }
+
+# DNS resolution
+hickory-resolver = "0.24"
+
+# TLS
+# NOTE: built against a pure-Rust CryptoProvider (rustls-rustcrypto) so the
+# binary compiles without a C toolchain; ring/aws-lc-rs are not required.
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+rustls-rustcrypto = "=0.1.0-pre.0"
+webpki-roots = "0.26"
+
+# Serialization & output
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+csv = "1"
+comfy-table = "7"
+
+# Terminal UX & logging
+indicatif = "0.17"
+console = "0.15"
+owo-colors = "4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling & utilities
+anyhow = "1"
+thiserror = "2"
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+
+[profile.release]
+lto = "thin"
+strip = true
