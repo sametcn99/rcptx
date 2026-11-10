@@ -748,7 +748,18 @@
 
 <span class="t-dim"># Provider fingerprints: list the table, see which needle matched a domain</span>
 <span class="t-dim">$</span> <span class="t-cmd">rcptx providers --category gateway</span>
-<span class="t-dim">$</span> <span class="t-cmd">rcptx mx example.com -v</span></pre>
+<span class="t-dim"> Provider fingerprints (21)
+┌──────────┬───────────────────────┬─────────────────────────────────────┐
+│ Category ┆ Needle                ┆ Provider                            ┆
+╞══════════╪═══════════════════════╪═════════════════════════════════════╡
+│ gateway  ┆ ppe-hosted.com        ┆ Proofpoint                          ┆
+│ gateway  ┆ mimecast.com          ┆ Mimecast                            ┆
+│ gateway  ┆ barracudanetworks.com ┆ Barracuda Email Security            ┆
+│ gateway  ┆ cudamail.com          ┆ Barracuda Email Security            ┆
+│ …        ┆ …                     ┆ …                                   ┆
+└──────────┴───────────────────────┴─────────────────────────────────────┘</span>
+<span class="t-dim">$</span> <span class="t-cmd">rcptx mx example.com -v</span>
+<span class="t-dim">  Matched   needle "google.com" matched MX host aspmx.l.google.com</span></pre>
         </div>
 
         <p class="lead" style="margin-top: 1.6rem">

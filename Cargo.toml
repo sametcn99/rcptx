@@ -1,6 +1,6 @@
 [package]
 name = "rcptx"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "rcptx — smart asynchronous SMTP recipient reconnaissance, MX diagnostics and catch-all detection"
 license = "MIT"
