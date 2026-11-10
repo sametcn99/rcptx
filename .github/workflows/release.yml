@@ -32,7 +32,7 @@ jobs:
             archive: zip
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -65,7 +65,7 @@ jobs:
           $hash = (Get-FileHash "rcptx-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLower()
           "$hash  rcptx-${{ matrix.target }}.zip" | Out-File -Encoding ascii "rcptx-${{ matrix.target }}.zip.sha256"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rcptx-${{ matrix.target }}
           path: |
@@ -77,8 +77,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -87,7 +87,7 @@ jobs:
         run: |
           ls -la
           sha256sum --check *.sha256
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           generate-release-notes: true
           draft: false
