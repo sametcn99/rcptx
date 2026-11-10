@@ -184,7 +184,11 @@ pub enum Command {
     /// Check GitHub Releases for a newer version and exit.
     CheckUpdate,
     /// List the built-in provider fingerprints used for MX/SPF detection.
-    Providers,
+    Providers {
+        /// Only show one category: gateway, cloud suite, hosting or forwarding (case-insensitive).
+        #[arg(long, value_name = "CATEGORY")]
+        category: Option<String>,
+    },
 }
 
 /// Fully-resolved runtime configuration handed to the scanner.
@@ -697,7 +701,11 @@ mod tests {
         ));
         assert!(matches!(
             parse(&["providers"]).command,
-            Some(Command::Providers)
+            Some(Command::Providers { category: None })
+        ));
+        assert!(matches!(
+            parse(&["providers", "--category", "gateway"]).command,
+            Some(Command::Providers { category: Some(ref category) }) if category == "gateway"
         ));
         assert!(
             parse(&["mx", "example.com", "--format", "json"])

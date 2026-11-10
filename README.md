@@ -181,6 +181,7 @@ rcptx -d example.com -l info --catch-all-probes 1 -v
 
 # 7. Provider fingerprints: list the built-in table, see which needle matched
 rcptx providers
+rcptx providers --category gateway
 rcptx mx example.com -v
 ```
 

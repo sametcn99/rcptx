@@ -427,6 +427,17 @@ pub const PROVIDER_FINGERPRINTS: &[ProviderFingerprint] = &[
     },
 ];
 
+/// Filter the fingerprint table by category, case-insensitively. Returns
+/// `None` when the category does not exist so callers can list valid ones.
+pub fn fingerprints_by_category(filter: &str) -> Option<Vec<ProviderFingerprint>> {
+    let filtered: Vec<ProviderFingerprint> = PROVIDER_FINGERPRINTS
+        .iter()
+        .copied()
+        .filter(|fingerprint| fingerprint.category.eq_ignore_ascii_case(filter))
+        .collect();
+    (!filtered.is_empty()).then_some(filtered)
+}
+
 /// Where a provider fingerprint matched.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatchSource {
@@ -802,5 +813,43 @@ mod tests {
         assert!(position("protection.outlook.com") < position("outlook.com"));
         assert!(position("protonmail.ch") < position("protonmail.com"));
         assert!(position("avanan.com") < position("checkpoint.com"));
+    }
+
+    #[test]
+    fn category_filter_is_case_insensitive_and_exclusive() {
+        let gateways = fingerprints_by_category("gateway").unwrap();
+        assert!(!gateways.is_empty());
+        assert!(gateways.iter().all(|fp| fp.category == "gateway"));
+
+        let suites = fingerprints_by_category("Cloud Suite").unwrap();
+        assert!(suites.iter().all(|fp| fp.category == "cloud suite"));
+        assert!(suites.len() < PROVIDER_FINGERPRINTS.len());
+
+        for category in ["hosting", "FORWARDING"] {
+            let filtered = fingerprints_by_category(category).unwrap();
+            assert!(
+                filtered
+                    .iter()
+                    .all(|fp| fp.category.eq_ignore_ascii_case(category))
+            );
+        }
+    }
+
+    #[test]
+    fn category_filter_rejects_unknown_categories() {
+        assert!(fingerprints_by_category("bogus").is_none());
+        assert!(fingerprints_by_category("").is_none());
+    }
+
+    #[test]
+    fn categories_are_listed_in_the_table() {
+        let mut categories: Vec<&str> =
+            PROVIDER_FINGERPRINTS.iter().map(|fp| fp.category).collect();
+        categories.sort_unstable();
+        categories.dedup();
+        assert_eq!(
+            categories,
+            ["cloud suite", "forwarding", "gateway", "hosting"]
+        );
     }
 }

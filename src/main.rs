@@ -80,7 +80,9 @@ async fn run(cli: Cli) -> Result<ExitCode> {
     match &cli.command {
         Some(Command::Mx { domain }) => run_mx_subcommand(&cli, domain).await,
         Some(Command::CheckUpdate) => run_check_update_subcommand().await,
-        Some(Command::Providers) => run_providers_subcommand(&cli),
+        Some(Command::Providers { category }) => {
+            run_providers_subcommand(&cli, category.as_deref())
+        }
         None => run_probe(&cli).await,
     }
 }
@@ -224,17 +226,26 @@ async fn run_mx_subcommand(cli: &Cli, domain: &str) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn run_providers_subcommand(cli: &Cli) -> Result<ExitCode> {
+fn run_providers_subcommand(cli: &Cli, category: Option<&str>) -> Result<ExitCode> {
     let quiet = cli.effective_quiet();
     init_tracing(cli.verbose, quiet);
+    let fingerprints = match category {
+        Some(filter) => dns::fingerprints_by_category(filter).ok_or_else(|| {
+            let mut valid: Vec<&str> = dns::PROVIDER_FINGERPRINTS
+                .iter()
+                .map(|fingerprint| fingerprint.category)
+                .collect();
+            valid.sort_unstable();
+            valid.dedup();
+            anyhow::anyhow!(
+                "unknown category {filter:?} — valid categories: {}",
+                valid.join(", ")
+            )
+        })?,
+        None => dns::PROVIDER_FINGERPRINTS.to_vec(),
+    };
     let (mut writer, color, width) = report_writer(cli)?;
-    output::write_provider_list(
-        writer.as_mut(),
-        dns::PROVIDER_FINGERPRINTS,
-        cli.format,
-        color,
-        width,
-    )?;
+    output::write_provider_list(writer.as_mut(), &fingerprints, cli.format, color, width)?;
     writer.flush().ok();
     Ok(ExitCode::SUCCESS)
 }
