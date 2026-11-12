@@ -3,840 +3,3679 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>rcptx — smart SMTP reconnaissance &amp; deliverability probing</title>
+    <title>rcptx — Asynchronous SMTP Reconnaissance &amp; Deliverability Telemetry</title>
     <meta
       name="description"
-      content="rcptx is a smart, asynchronous SMTP reconnaissance CLI: probe recipient validity, MX posture and catch-all behaviour without sending a single email."
+      content="rcptx is a pure-Rust asynchronous SMTP reconnaissance CLI: probe recipient validity, inspect MX/SPF/DMARC posture, fingerprint 55 mail gateways and detect catch-all servers without sending a single email."
     />
+    <meta name="theme-color" content="#07080a" />
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f172a'/%3E%3Cpath d='M20 32l30 22 30-22' stroke='%2338bdf8' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='20' y='30' width='60' height='40' rx='6' stroke='%2338bdf8' stroke-width='8' fill='none'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%2307080a'/%3E%3Crect x='10' y='10' width='80' height='80' fill='none' stroke='%23222733' stroke-width='4'/%3E%3Cpath d='M22 33h56v34H22z' fill='none' stroke='%23f0ede6' stroke-width='5'/%3E%3Cpath d='M22 35l28 19 28-19' fill='none' stroke='%23c8ff2e' stroke-width='5' stroke-linecap='square'/%3E%3Ccircle cx='78' cy='22' r='6' fill='%23c8ff2e'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
     />
     <style>
       :root {
-        --bg: #0b1220;
-        --bg-soft: #0f172a;
-        --bg-card: #131d33;
-        --line: #22304d;
-        --text: #dbe7ff;
-        --muted: #8fa3c8;
-        --accent: #38bdf8;
-        --accent-2: #34d399;
-        --accepted: #34d399;
-        --catchall: #22d3ee;
-        --rejected: #f87171;
-        --temporary: #fbbf24;
-        --policy: #e879f9;
-        --indeterminate: #818cf8;
-        --error: #94a3b8;
-        --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
-        --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --bg: #07080a;
+        --bg-panel: #0c0e13;
+        --bg-elev: #11141b;
+        --bg-hover: #171b24;
+        --line: #212633;
+        --line-strong: #323a4d;
+        --ink: #f0ede6;
+        --ink-2: #b4bccb;
+        --muted: #6e7789;
+        --lime: #c8ff2e;
+        --lime-dim: rgba(200, 255, 46, 0.12);
+        --amber: #ff9f1c;
+        --amber-dim: rgba(255, 159, 28, 0.12);
+        --cyan: #2ce6d2;
+        --cyan-dim: rgba(44, 230, 210, 0.12);
+        --crimson: #ff5449;
+        --crimson-dim: rgba(255, 84, 73, 0.12);
+        --violet: #d96bff;
+        --violet-dim: rgba(217, 107, 255, 0.12);
+        --indigo: #8694ff;
+        --indigo-dim: rgba(134, 148, 255, 0.12);
+        --slate: #94a3b8;
+        --slate-dim: rgba(148, 163, 184, 0.12);
+        --display: "Space Grotesk", system-ui, -apple-system, sans-serif;
+        --serif: "Instrument Serif", Georgia, serif;
+        --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+        --max-w: 1320px;
       }
-      * {
+
+      *,
+      *::before,
+      *::after {
         box-sizing: border-box;
       }
+
       html {
         scroll-behavior: smooth;
+        background: var(--bg);
+        color-scheme: dark;
       }
+
       body {
         margin: 0;
         font-family: var(--sans);
-        background:
-          radial-gradient(1200px 500px at 80% -10%, rgba(56, 189, 248, 0.12), transparent 60%),
-          radial-gradient(900px 500px at -10% 10%, rgba(52, 211, 153, 0.08), transparent 55%), var(--bg);
-        color: var(--text);
-        line-height: 1.6;
-      }
-      a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      a:hover {
-        text-decoration: underline;
-      }
-      code {
-        font-family: var(--mono);
-        font-size: 0.92em;
+        background: var(--bg);
+        color: var(--ink);
+        line-height: 1.55;
+        font-size: 15px;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
       }
 
-      /* Nav */
-      nav {
+      /* Architectural grid atmosphere */
+      .bg-grid {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+          linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(ellipse 85% 65% at 50% 15%, #000 35%, transparent 100%);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+        color: inherit;
+      }
+
+      code,
+      pre,
+      .mono {
+        font-family: var(--mono);
+      }
+
+      .tnum {
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Focus ring */
+      :focus-visible {
+        outline: 2px solid var(--lime);
+        outline-offset: 2px;
+      }
+
+      /* Top scroll hairline */
+      .scroll-rail {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        z-index: 120;
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .scroll-rail-fill {
+        height: 100%;
+        width: 0%;
+        background: var(--lime);
+        box-shadow: 0 0 12px rgba(200, 255, 46, 0.6);
+        transition: width 0.08s linear;
+      }
+
+      /* Architectural Top HUD */
+      .hud {
         position: sticky;
         top: 0;
-        z-index: 50;
+        z-index: 90;
+        border-bottom: 1px solid var(--line);
+        background: rgba(7, 8, 10, 0.84);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+      }
+
+      .hud-inner {
+        max-width: var(--max-w);
+        margin: 0 auto;
+        padding: 0 1.25rem;
+        height: 58px;
         display: flex;
         align-items: center;
         gap: 1.25rem;
-        padding: 0.8rem 1.4rem;
-        background: rgba(11, 18, 32, 0.85);
-        backdrop-filter: blur(10px);
-        border-bottom: 1px solid var(--line);
       }
-      nav .brand {
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.65rem;
+        font-family: var(--display);
+        font-weight: 700;
+        font-size: 1.05rem;
+        letter-spacing: -0.03em;
+      }
+
+      .brand-tag {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        font-weight: 500;
+        color: var(--lime);
+        border: 1px solid rgba(200, 255, 46, 0.35);
+        background: var(--lime-dim);
+        padding: 0.12rem 0.42rem;
+        letter-spacing: 0.04em;
+      }
+
+      .hud-nav {
+        display: flex;
+        align-items: center;
+        gap: 0.2rem;
+        margin-left: 1rem;
+      }
+
+      .hud-nav a {
+        font-family: var(--mono);
+        font-size: 0.73rem;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+        padding: 0.4rem 0.65rem;
+        border: 1px solid transparent;
+        transition: color 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+        white-space: nowrap;
+      }
+
+      .hud-nav a:hover,
+      .hud-nav a.active {
+        color: var(--ink);
+        background: var(--bg-elev);
+        border-color: var(--line);
+      }
+
+      .hud-nav a.active span {
+        color: var(--lime);
+      }
+
+      .hud-right {
+        margin-left: auto;
         display: flex;
         align-items: center;
         gap: 0.55rem;
-        font-weight: 700;
-        color: var(--text);
       }
-      nav .brand:hover {
-        text-decoration: none;
+
+      .cmd-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--bg-panel);
+        border: 1px solid var(--line);
+        color: var(--ink-2);
+        padding: 0.34rem 0.65rem;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        cursor: pointer;
+        transition: border-color 0.15s ease, color 0.15s ease;
       }
-      nav .links {
-        margin-left: auto;
-        display: flex;
-        gap: 1.1rem;
-        font-size: 0.92rem;
-        flex-wrap: wrap;
+
+      .cmd-trigger:hover {
+        border-color: var(--lime);
+        color: var(--ink);
       }
-      @media (max-width: 640px) {
-        nav .links {
+
+      .cmd-trigger kbd {
+        font-family: var(--mono);
+        font-size: 0.66rem;
+        padding: 0.08rem 0.34rem;
+        border: 1px solid var(--line-strong);
+        background: var(--bg);
+        color: var(--lime);
+      }
+
+      .hud-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-family: var(--mono);
+        font-size: 0.73rem;
+        padding: 0.36rem 0.72rem;
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+        color: var(--ink);
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+
+      .hud-btn:hover {
+        border-color: var(--ink-2);
+        background: var(--bg-elev);
+      }
+
+      .hud-menu-btn {
+        display: none;
+        background: var(--bg-panel);
+        border: 1px solid var(--line);
+        padding: 0.36rem 0.65rem;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        color: var(--lime);
+        cursor: pointer;
+      }
+
+      @media (max-width: 1020px) {
+        .hud-nav {
+          display: none;
+        }
+        .hud-menu-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .cmd-trigger span.label {
+          display: none;
+        }
+        .hud-btn.gh-desktop {
           display: none;
         }
       }
 
-      /* Layout */
+      /* Fullscreen takeover drawer (mobile) */
+      .mobile-drawer {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        background: rgba(7, 8, 10, 0.97);
+        backdrop-filter: blur(18px);
+        display: none;
+        flex-direction: column;
+        padding: 1.5rem;
+      }
+      .mobile-drawer.open {
+        display: flex;
+      }
+      .mobile-drawer-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--line);
+      }
+      .mobile-drawer-links {
+        display: flex;
+        flex-direction: column;
+        margin: auto 0;
+        gap: 0.4rem;
+      }
+      .mobile-drawer-links a {
+        font-family: var(--display);
+        font-size: clamp(1.7rem, 7vw, 2.5rem);
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        padding: 0.45rem 0;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: baseline;
+        gap: 0.9rem;
+      }
+      .mobile-drawer-links a span {
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        color: var(--lime);
+      }
+
+      /* Layout & Architectural Frames */
       .wrap {
-        max-width: 1060px;
+        max-width: var(--max-w);
         margin: 0 auto;
         padding: 0 1.25rem;
       }
-      section {
-        padding: 3.5rem 0;
-      }
-      section + section {
+
+      .section {
+        padding: 4.5rem 0;
         border-top: 1px solid var(--line);
-      }
-      h2 {
-        font-size: 1.6rem;
-        margin: 0 0 0.4rem;
-      }
-      .lead {
-        color: var(--muted);
-        max-width: 46rem;
-        margin: 0 0 1.8rem;
+        position: relative;
       }
 
-      /* Hero */
+      .section-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 1.5rem;
+        align-items: end;
+        margin-bottom: 2.25rem;
+      }
+
+      @media (max-width: 760px) {
+        .section-head {
+          grid-template-columns: 1fr;
+          gap: 0.85rem;
+        }
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        font-family: var(--mono);
+        font-size: 0.73rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--lime);
+        margin-bottom: 0.7rem;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        background: var(--lime);
+        display: inline-block;
+      }
+
+      h2 {
+        margin: 0;
+        font-family: var(--display);
+        font-size: clamp(1.9rem, 3.6vw, 2.9rem);
+        font-weight: 700;
+        line-height: 1.06;
+        letter-spacing: -0.035em;
+      }
+
+      h2 em {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 400;
+        color: var(--lime);
+        letter-spacing: -0.01em;
+      }
+
+      .section-lead {
+        max-width: 36rem;
+        margin: 0;
+        color: var(--ink-2);
+        font-size: 0.96rem;
+      }
+
+      /* Registration corner frame */
+      .frame {
+        position: relative;
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+      }
+      .frame::before,
+      .frame::after {
+        content: "+";
+        position: absolute;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        line-height: 1;
+        color: var(--line-strong);
+        pointer-events: none;
+        z-index: 2;
+      }
+      .frame::before {
+        top: -7px;
+        left: -4px;
+      }
+      .frame::after {
+        bottom: -7px;
+        right: -4px;
+      }
+
+      /* Reveal choreography */
+      .reveal {
+        opacity: 0;
+        transform: translateY(18px);
+        transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .reveal.in {
+        opacity: 1;
+        transform: none;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .reveal {
+          opacity: 1;
+          transform: none;
+          transition: none;
+        }
+        html {
+          scroll-behavior: auto;
+        }
+      }
+
+      /* HERO */
       .hero {
-        padding: 5.2rem 0 3.6rem;
-        text-align: center;
+        padding: 2.5rem 0 3.5rem;
       }
-      .hero h1 {
-        font-size: clamp(2.4rem, 6vw, 3.6rem);
-        margin: 0 0 0.6rem;
-        letter-spacing: -0.02em;
-        background: linear-gradient(120deg, #e2f2ff 30%, var(--accent) 70%);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-      }
-      .hero .tag {
-        font-size: clamp(1.02rem, 2.4vw, 1.25rem);
+
+      .hero-meta-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.65rem 0.95rem;
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+        margin-bottom: 1.5rem;
+        font-family: var(--mono);
+        font-size: 0.72rem;
         color: var(--muted);
-        margin: 0 auto 1.8rem;
-        max-width: 44rem;
       }
-      .badges {
+
+      .hero-meta-bar .pulse-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--lime);
+        display: inline-block;
+        margin-right: 0.45rem;
+        box-shadow: 0 0 8px var(--lime);
+        animation: pulse 1.8s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.35; }
+      }
+
+      .hero-meta-chips {
         display: flex;
-        justify-content: center;
+        flex-wrap: wrap;
         gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-bottom: 2rem;
       }
-      .badges img {
-        height: 22px;
-        border-radius: 3px;
+      .hero-meta-chips span {
+        border: 1px solid var(--line);
+        padding: 0.14rem 0.48rem;
+        color: var(--ink-2);
+        background: var(--bg);
       }
-      .cta {
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+      }
+
+      @media (max-width: 980px) {
+        .hero-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .hero-left {
+        padding: clamp(1.5rem, 3.5vw, 3rem);
+        border-right: 1px solid var(--line);
         display: flex;
-        justify-content: center;
-        gap: 0.8rem;
-        flex-wrap: wrap;
-        margin-bottom: 1.6rem;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 2rem;
       }
+
+      @media (max-width: 980px) {
+        .hero-left {
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+
+      .hero-title {
+        margin: 0;
+        font-family: var(--display);
+        font-size: clamp(2.55rem, 5.4vw, 4.65rem);
+        font-weight: 700;
+        line-height: 0.96;
+        letter-spacing: -0.045em;
+        color: var(--ink);
+      }
+
+      .hero-title em {
+        font-family: var(--serif);
+        font-style: italic;
+        font-weight: 400;
+        color: var(--lime);
+        letter-spacing: -0.015em;
+      }
+
+      .hero-sub {
+        margin: 1.35rem 0 0;
+        max-width: 38rem;
+        font-size: 1.02rem;
+        color: var(--ink-2);
+        line-height: 1.6;
+      }
+
+      .hero-sub code {
+        color: var(--lime);
+        background: var(--lime-dim);
+        padding: 0.08rem 0.36rem;
+        font-size: 0.88em;
+      }
+
+      /* Install Switcher */
+      .install-box {
+        border: 1px solid var(--line);
+        background: var(--bg);
+      }
+
+      .install-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-elev);
+      }
+
+      .install-tab {
+        background: transparent;
+        border: none;
+        border-right: 1px solid var(--line);
+        padding: 0.45rem 0.78rem;
+        font-family: var(--mono);
+        font-size: 0.71rem;
+        color: var(--muted);
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+
+      .install-tab:hover {
+        color: var(--ink);
+      }
+
+      .install-tab.active {
+        background: var(--bg);
+        color: var(--lime);
+        box-shadow: inset 0 -2px 0 var(--lime);
+      }
+
+      .install-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.8rem 0.95rem;
+      }
+
+      .install-row code {
+        font-size: 0.82rem;
+        color: var(--ink);
+        overflow-x: auto;
+        white-space: nowrap;
+        scrollbar-width: none;
+      }
+
+      .copy-btn {
+        flex-shrink: 0;
+        background: var(--bg-elev);
+        border: 1px solid var(--line-strong);
+        color: var(--ink-2);
+        font-family: var(--mono);
+        font-size: 0.71rem;
+        padding: 0.32rem 0.65rem;
+        cursor: pointer;
+        transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+      }
+
+      .copy-btn:hover {
+        border-color: var(--lime);
+        color: var(--lime);
+      }
+
+      .copy-btn.copied {
+        background: var(--lime);
+        border-color: var(--lime);
+        color: #07080a;
+        font-weight: 700;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.7rem;
+        margin-top: 1.1rem;
+      }
+
       .btn {
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
-        padding: 0.68rem 1.25rem;
-        border-radius: 10px;
-        font-weight: 600;
-        font-size: 0.95rem;
-        border: 1px solid var(--line);
-        color: var(--text);
-        background: var(--bg-card);
-        transition:
-          transform 0.12s ease,
-          border-color 0.12s ease;
-      }
-      .btn:hover {
-        text-decoration: none;
-        transform: translateY(-1px);
-        border-color: var(--accent);
-      }
-      .btn.primary {
-        background: linear-gradient(120deg, #0ea5e9, #38bdf8);
-        border-color: transparent;
-        color: #06121f;
-      }
-      .btn.primary:hover {
-        border-color: #7dd3fc;
-      }
-
-      .install {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.9rem;
-        background: var(--bg-soft);
-        border: 1px solid var(--line);
-        padding: 0.65rem 1.5rem;
-        border-radius: 12px;
-        font-size: 0.95rem;
-      }
-      .install code {
-        color: var(--accent-2);
-      }
-      .copy {
-        border: 1px solid var(--line);
-        background: var(--bg-card);
-        color: var(--muted);
-        border-radius: 7px;
-        padding: 0.18rem 0.5rem;
-        cursor: pointer;
-        font-size: 0.78rem;
-      }
-      .copy:hover {
-        color: var(--text);
-        border-color: var(--accent);
-      }
-      .platforms {
-        margin-top: 1.1rem;
-        color: var(--muted);
-        font-size: 0.88rem;
-      }
-
-      /* Terminal */
-      .term {
-        --r: 12px;
-        max-width: 860px;
-        margin: 2.4rem auto 0;
-        background: #0a0f1c;
-        border: 1px solid var(--line);
-        border-radius: var(--r);
-        box-shadow: 0 24px 60px rgba(2, 8, 20, 0.55);
-        overflow: hidden;
-        text-align: left;
-      }
-      .term-bar {
-        display: flex;
-        gap: 0.45rem;
-        padding: 0.7rem 0.95rem;
-        border-bottom: 1px solid var(--line);
-        background: #0d1526;
-      }
-      .term-bar i {
-        width: 11px;
-        height: 11px;
-        border-radius: 50%;
-        background: #334564;
-      }
-      .term-bar i:nth-child(1) {
-        background: #f87171;
-      }
-      .term-bar i:nth-child(2) {
-        background: #fbbf24;
-      }
-      .term-bar i:nth-child(3) {
-        background: #34d399;
-      }
-      .term pre {
-        margin: 0;
-        padding: 1.1rem 1.25rem;
-        overflow-x: auto;
+        padding: 0.72rem 1.2rem;
         font-family: var(--mono);
-        font-size: clamp(0.72rem, 1.6vw, 0.84rem);
-        line-height: 1.55;
-      }
-      .t-dim {
-        color: #5b6f94;
-      }
-      .t-cmd {
-        color: #e2f2ff;
-      }
-      .t-green {
-        color: var(--accepted);
-      }
-      .t-cyan {
-        color: var(--catchall);
-      }
-      .t-red {
-        color: var(--rejected);
-      }
-      .t-yellow {
-        color: var(--temporary);
-      }
-      .t-magenta {
-        color: var(--policy);
-      }
-      .t-blue {
-        color: var(--indeterminate);
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        border: 1px solid var(--line-strong);
+        background: var(--bg-elev);
+        color: var(--ink);
+        cursor: pointer;
+        transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
       }
 
-      /* Feature grid */
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1rem;
+      .btn:hover {
+        transform: translateY(-1px);
+        border-color: var(--ink);
       }
-      .card {
-        background: var(--bg-card);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 1.25rem 1.25rem 1.1rem;
+
+      .btn.primary {
+        background: var(--lime);
+        border-color: var(--lime);
+        color: #07080a;
       }
-      .card h3 {
-        margin: 0.55rem 0 0.35rem;
-        font-size: 1.02rem;
+
+      .btn.primary:hover {
+        background: #d7ff62;
+        border-color: #d7ff62;
       }
-      .card p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 0.9rem;
+
+      /* Right Hero Interactive Telemetry Oscilloscope */
+      .hero-right {
+        display: flex;
+        flex-direction: column;
+        background: #08090c;
+        min-width: 0;
       }
-      .card .icon {
-        width: 38px;
-        height: 38px;
-        border-radius: 9px;
+
+      .scope-head {
         display: flex;
         align-items: center;
-        justify-content: center;
-        background: rgba(56, 189, 248, 0.12);
-        color: var(--accent);
-      }
-      .card .icon svg {
-        width: 20px;
-        height: 20px;
+        justify-content: space-between;
+        gap: 0.6rem;
+        padding: 0.7rem 1rem;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-elev);
+        font-family: var(--mono);
+        font-size: 0.71rem;
       }
 
-      /* Pipeline */
-      .pipeline {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 0.8rem;
-        counter-reset: step;
+      .scope-title {
+        color: var(--ink-2);
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
       }
-      .step {
-        background: var(--bg-card);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 1rem;
+
+      .scope-scenarios {
+        display: flex;
+        flex-wrap: wrap;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .scenario-btn {
+        flex: 1 1 auto;
+        background: transparent;
+        border: none;
+        border-right: 1px solid var(--line);
+        padding: 0.48rem 0.65rem;
+        font-family: var(--mono);
+        font-size: 0.69rem;
+        color: var(--muted);
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .scenario-btn:last-child {
+        border-right: none;
+      }
+      .scenario-btn:hover {
+        color: var(--ink);
+        background: var(--bg-panel);
+      }
+      .scenario-btn.active {
+        background: var(--lime-dim);
+        color: var(--lime);
+      }
+
+      .scope-canvas-wrap {
         position: relative;
+        height: 270px;
+        border-bottom: 1px solid var(--line);
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 50% 50%, rgba(200, 255, 46, 0.045), transparent 70%),
+          #07080b;
       }
-      .step::before {
-        counter-increment: step;
-        content: counter(step);
+
+      #smtp-scope {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .scope-hud-overlay {
+        position: absolute;
+        inset: 0.65rem 0.85rem;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-size: 0.66rem;
+        color: var(--muted);
+      }
+
+      .scope-hud-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .scope-cutoff {
+        color: var(--crimson);
+        border: 1px dashed rgba(255, 84, 73, 0.4);
+        background: rgba(255, 84, 73, 0.08);
+        padding: 0.12rem 0.42rem;
+      }
+
+      .scope-wire {
+        padding: 0.9rem 1rem;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        line-height: 1.55;
+        min-height: 195px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .wire-lines {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .wire-line-tx {
+        color: var(--ink);
+      }
+      .wire-line-rx-ok {
+        color: var(--lime);
+      }
+      .wire-line-rx-warn {
+        color: var(--amber);
+      }
+      .wire-line-rx-err {
+        color: var(--crimson);
+      }
+      .wire-line-rx-cyan {
+        color: var(--cyan);
+      }
+      .wire-line-dim {
+        color: var(--muted);
+      }
+
+      .wire-status-bar {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding-top: 0.65rem;
+        margin-top: 0.65rem;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.69rem;
+      }
+
+      /* Proof strip */
+      .proof-strip {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        border: 1px solid var(--line);
+        border-top: none;
+        background: var(--bg-panel);
+      }
+
+      @media (max-width: 900px) {
+        .proof-strip {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      .proof-cell {
+        padding: 1rem 1.15rem;
+        border-right: 1px solid var(--line);
+      }
+
+      .proof-cell:last-child {
+        border-right: none;
+      }
+
+      @media (max-width: 900px) {
+        .proof-cell {
+          border-bottom: 1px solid var(--line);
+        }
+      }
+
+      .proof-num {
+        font-family: var(--display);
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        color: var(--ink);
+        line-height: 1.1;
+      }
+      .proof-num span {
+        color: var(--lime);
+      }
+      .proof-label {
+        margin-top: 0.2rem;
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      /* SECTION 01: PIPELINE */
+      .pipeline-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+      }
+
+      @media (max-width: 920px) {
+        .pipeline-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .pipeline-steps {
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+      }
+
+      @media (max-width: 920px) {
+        .pipeline-steps {
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+
+      .p-step {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid var(--line);
+        padding: 1.15rem 1.25rem;
+        cursor: pointer;
+        display: grid;
+        grid-template-columns: 44px 1fr auto;
+        align-items: center;
+        gap: 0.85rem;
+        transition: background 0.16s ease;
+      }
+
+      .p-step:last-child {
+        border-bottom: none;
+      }
+
+      .p-step:hover {
+        background: var(--bg-elev);
+      }
+
+      .p-step.active {
+        background: var(--bg-elev);
+        box-shadow: inset 3px 0 0 var(--lime);
+      }
+
+      .p-step-idx {
+        font-family: var(--mono);
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: var(--muted);
+        border: 1px solid var(--line);
+        padding: 0.3rem 0;
+        text-align: center;
+      }
+
+      .p-step.active .p-step-idx {
+        color: #07080a;
+        background: var(--lime);
+        border-color: var(--lime);
+      }
+
+      .p-step-title {
+        font-family: var(--display);
+        font-size: 1.02rem;
+        font-weight: 600;
+        color: var(--ink);
+        display: block;
+      }
+
+      .p-step-sub {
+        font-size: 0.84rem;
+        color: var(--muted);
+        display: block;
+        margin-top: 0.15rem;
+      }
+
+      .p-step-arrow {
+        font-family: var(--mono);
+        color: var(--muted);
+      }
+      .p-step.active .p-step-arrow {
+        color: var(--lime);
+      }
+
+      .pipeline-detail {
+        padding: 1.65rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 1.35rem;
+      }
+
+      .pd-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        padding-bottom: 0.9rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .pd-phase {
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        color: var(--lime);
+        letter-spacing: 0.06em;
+      }
+
+      .pd-crate {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--ink-2);
+        border: 1px solid var(--line);
+        padding: 0.18rem 0.5rem;
+        background: var(--bg);
+      }
+
+      .pd-title {
+        margin: 0;
+        font-family: var(--display);
+        font-size: 1.55rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
+
+      .pd-desc {
+        margin: 0.65rem 0 0;
+        color: var(--ink-2);
+        line-height: 1.65;
+      }
+
+      .pd-specs {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+      }
+
+      @media (max-width: 560px) {
+        .pd-specs {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .pd-spec {
+        border: 1px solid var(--line);
+        background: var(--bg);
+        padding: 0.75rem 0.9rem;
+      }
+
+      .pd-spec b {
+        display: block;
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin-bottom: 0.22rem;
+      }
+
+      .pd-spec span {
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        color: var(--ink);
+      }
+
+      .pd-code {
+        border: 1px solid var(--line);
+        background: #07080b;
+        padding: 0.95rem 1.05rem;
+        font-family: var(--mono);
+        font-size: 0.77rem;
+        line-height: 1.6;
+        overflow-x: auto;
+        color: var(--ink-2);
+        margin: 0;
+      }
+
+      /* Feature architectural matrix */
+      .cap-grid {
+        margin-top: 1.5rem;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+      }
+
+      @media (max-width: 980px) {
+        .cap-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 560px) {
+        .cap-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .cap-cell {
+        padding: 1.35rem 1.2rem;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        transition: background 0.16s ease;
+      }
+      .cap-cell:hover {
+        background: var(--bg-elev);
+      }
+      .cap-cell-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.7rem;
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--lime);
+      }
+      .cap-cell h3 {
+        margin: 0 0 0.45rem;
+        font-family: var(--display);
+        font-size: 1.05rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .cap-cell p {
+        margin: 0;
+        color: var(--ink-2);
+        font-size: 0.87rem;
+      }
+
+      /* SECTION 02: VERDICT LAB */
+      .lab-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+      }
+
+      @media (max-width: 920px) {
+        .lab-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .lab-controls {
+        padding: 1.5rem;
+        border-right: 1px solid var(--line);
+      }
+
+      @media (max-width: 920px) {
+        .lab-controls {
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+
+      .lab-presets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 1.25rem;
+      }
+
+      .pill-btn {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        padding: 0.32rem 0.62rem;
+        font-family: var(--mono);
+        font-size: 0.71rem;
+        color: var(--ink-2);
+        cursor: pointer;
+        transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+      }
+
+      .pill-btn:hover {
+        border-color: var(--ink-2);
+        color: var(--ink);
+      }
+
+      .pill-btn.active {
+        border-color: var(--lime);
+        background: var(--lime-dim);
+        color: var(--lime);
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.85rem;
+      }
+
+      @media (max-width: 520px) {
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .field.full {
+        grid-column: 1 / -1;
+      }
+
+      .field label {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--muted);
+      }
+
+      .field input,
+      .field select {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        padding: 0.56rem 0.7rem;
+        font-family: var(--mono);
+        font-size: 0.83rem;
+        color: var(--ink);
+      }
+
+      .field input:focus,
+      .field select:focus {
+        border-color: var(--lime);
+        outline: none;
+      }
+
+      .lab-output {
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 1.15rem;
+        background: #08090c;
+      }
+
+      .verdict-banner {
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+        padding: 1.1rem 1.2rem;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.85rem;
+      }
+
+      .verdict-trace {
+        font-family: var(--mono);
+        font-size: 0.76rem;
+        color: var(--ink-2);
+        border-left: 2px solid var(--lime);
+        padding-left: 0.8rem;
+      }
+
+      .format-tabs {
+        display: flex;
+        border: 1px solid var(--line);
+        border-bottom: none;
+        background: var(--bg-elev);
+      }
+
+      .format-tab {
+        background: transparent;
+        border: none;
+        border-right: 1px solid var(--line);
+        padding: 0.42rem 0.8rem;
+        font-family: var(--mono);
+        font-size: 0.71rem;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .format-tab.active {
+        color: var(--lime);
+        background: #07080b;
+      }
+
+      .format-preview {
+        margin: 0;
+        border: 1px solid var(--line);
+        background: #07080b;
+        padding: 0.95rem 1.05rem;
+        font-family: var(--mono);
+        font-size: 0.75rem;
+        line-height: 1.55;
+        overflow-x: auto;
+        color: var(--ink);
+        min-height: 145px;
+      }
+
+      /* Chips & Verdict Matrix */
+      .chip {
         display: inline-flex;
         align-items: center;
-        justify-content: center;
-        width: 24px;
-        height: 24px;
-        border-radius: 7px;
-        margin-bottom: 0.5rem;
-        background: rgba(52, 211, 153, 0.14);
-        color: var(--accent-2);
-        font-weight: 700;
-        font-size: 0.85rem;
+        gap: 0.35rem;
+        padding: 0.16rem 0.56rem;
+        font-family: var(--mono);
+        font-size: 0.74rem;
+        font-weight: 600;
+        border: 1px solid transparent;
       }
-      .step b {
-        display: block;
-        font-size: 0.95rem;
-        margin-bottom: 0.2rem;
+      .chip.accepted {
+        background: var(--lime-dim);
+        color: var(--lime);
+        border-color: rgba(200, 255, 46, 0.35);
       }
-      .step span {
-        color: var(--muted);
-        font-size: 0.84rem;
+      .chip.accepted_catch_all {
+        background: var(--cyan-dim);
+        color: var(--cyan);
+        border-color: rgba(44, 230, 210, 0.35);
+      }
+      .chip.rejected {
+        background: var(--crimson-dim);
+        color: var(--crimson);
+        border-color: rgba(255, 84, 73, 0.35);
+      }
+      .chip.temporary {
+        background: var(--amber-dim);
+        color: var(--amber);
+        border-color: rgba(255, 159, 28, 0.35);
+      }
+      .chip.policy_blocked {
+        background: var(--violet-dim);
+        color: var(--violet);
+        border-color: rgba(217, 107, 255, 0.35);
+      }
+      .chip.indeterminate {
+        background: var(--indigo-dim);
+        color: var(--indigo);
+        border-color: rgba(134, 148, 255, 0.35);
+      }
+      .chip.error {
+        background: var(--slate-dim);
+        color: var(--slate);
+        border-color: rgba(148, 163, 184, 0.35);
       }
 
-      /* Verdict table */
+      .table-shell {
+        margin-top: 1.5rem;
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+        overflow-x: auto;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.92rem;
+        font-size: 0.88rem;
       }
+
       th,
       td {
         text-align: left;
-        padding: 0.6rem 0.8rem;
+        padding: 0.75rem 1rem;
         border-bottom: 1px solid var(--line);
       }
+
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      tbody tr:hover {
+        background: var(--bg-elev);
+      }
+
       th {
-        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 0.71rem;
         font-weight: 600;
-        font-size: 0.8rem;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-      }
-      .chip {
-        display: inline-block;
-        padding: 0.12rem 0.6rem;
-        border-radius: 999px;
-        font-family: var(--mono);
-        font-size: 0.8rem;
-      }
-      .chip.accepted {
-        background: rgba(52, 211, 153, 0.13);
-        color: var(--accepted);
-      }
-      .chip.accepted_catch_all {
-        background: rgba(34, 211, 238, 0.13);
-        color: var(--catchall);
-      }
-      .chip.rejected {
-        background: rgba(248, 113, 113, 0.13);
-        color: var(--rejected);
-      }
-      .chip.temporary {
-        background: rgba(251, 191, 36, 0.13);
-        color: var(--temporary);
-      }
-      .chip.policy_blocked {
-        background: rgba(232, 121, 249, 0.13);
-        color: var(--policy);
-      }
-      .chip.indeterminate {
-        background: rgba(129, 140, 248, 0.13);
-        color: var(--indeterminate);
-      }
-      .chip.error {
-        background: rgba(148, 163, 184, 0.13);
-        color: var(--error);
-      }
-      .table-wrap {
-        overflow-x: auto;
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        background: var(--bg-card);
-      }
-
-      /* Examples */
-      .example {
-        margin: 0 0 1.1rem;
-      }
-      .example .label {
-        color: var(--text);
-        font-weight: 600;
-        font-size: 0.92rem;
-        margin-bottom: 0.35rem;
-      }
-
-      /* Downloads */
-      .dl-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-        gap: 1rem;
-      }
-      .dl {
-        display: flex;
-        flex-direction: column;
-        gap: 0.3rem;
-        background: var(--bg-card);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 1.15rem;
-        transition:
-          transform 0.12s ease,
-          border-color 0.12s ease;
-      }
-      .dl:hover {
-        transform: translateY(-2px);
-        border-color: var(--accent);
-        text-decoration: none;
-      }
-      .dl b {
-        color: var(--text);
-        font-size: 0.98rem;
-      }
-      .dl span {
         color: var(--muted);
-        font-size: 0.84rem;
+        background: var(--bg-elev);
       }
-      .dl .file {
+
+      /* SECTION 03: FINGERPRINT ATLAS */
+      .atlas-shell {
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+      }
+
+      .atlas-matcher {
+        padding: 1.35rem;
+        border-bottom: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        gap: 1.25rem;
+        align-items: center;
+        background: var(--bg-elev);
+      }
+
+      @media (max-width: 900px) {
+        .atlas-matcher {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .matcher-input-row {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .matcher-input-row input {
+        flex: 1;
+        min-width: 0;
+        background: var(--bg);
+        border: 1px solid var(--line-strong);
+        padding: 0.6rem 0.8rem;
+        font-family: var(--mono);
+        font-size: 0.84rem;
+        color: var(--ink);
+      }
+
+      .matcher-samples {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-top: 0.65rem;
+      }
+
+      .matcher-result {
+        border: 1px solid var(--line);
+        background: #07080b;
+        padding: 0.9rem 1.05rem;
+        font-family: var(--mono);
+        font-size: 0.76rem;
+        line-height: 1.55;
+      }
+
+      .atlas-toolbar {
+        padding: 0.95rem 1.35rem;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.85rem;
+      }
+
+      .atlas-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+
+      .atlas-search {
+        background: var(--bg);
+        border: 1px solid var(--line);
+        padding: 0.42rem 0.75rem;
         font-family: var(--mono);
         font-size: 0.78rem;
-        color: var(--accent);
+        min-width: 220px;
       }
 
+      .atlas-scroll {
+        max-height: 360px;
+        overflow-y: auto;
+      }
+
+      .atlas-scroll thead th {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+      }
+
+      .cat-tag {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        padding: 0.14rem 0.48rem;
+        border: 1px solid var(--line-strong);
+        color: var(--ink-2);
+        text-transform: uppercase;
+      }
+      .cat-tag.gateway {
+        border-color: rgba(255, 159, 28, 0.4);
+        color: var(--amber);
+      }
+      .cat-tag.cloud {
+        border-color: rgba(44, 230, 210, 0.4);
+        color: var(--cyan);
+      }
+      .cat-tag.hosting {
+        border-color: rgba(134, 148, 255, 0.4);
+        color: var(--indigo);
+      }
+      .cat-tag.forwarding {
+        border-color: rgba(200, 255, 46, 0.4);
+        color: var(--lime);
+      }
+
+      tr.matched-row {
+        background: rgba(200, 255, 46, 0.08);
+      }
+
+      /* SECTION 04: CLI WORKBENCH */
+      .workbench-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+      }
+
+      @media (max-width: 960px) {
+        .workbench-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .wb-panel {
+        padding: 1.5rem;
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        gap: 1.1rem;
+      }
+
+      @media (max-width: 960px) {
+        .wb-panel {
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+        }
+      }
+
+      .wb-group-label {
+        font-family: var(--mono);
+        font-size: 0.71rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin-bottom: 0.45rem;
+        display: block;
+      }
+
+      .toggle-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+
+      .preset-inspector {
+        border: 1px solid var(--line);
+        background: var(--bg);
+        padding: 0.85rem;
+      }
+
+      .preset-words {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.55rem;
+      }
+
+      .preset-word {
+        font-family: var(--mono);
+        font-size: 0.71rem;
+        padding: 0.14rem 0.42rem;
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+        color: var(--ink-2);
+      }
+
+      .wb-right {
+        padding: 1.5rem;
+        background: #08090c;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 1.25rem;
+      }
+
+      .cmd-preview-box {
+        border: 1px solid var(--line-strong);
+        background: #050608;
+      }
+
+      .cmd-preview-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.85rem;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-elev);
+        font-family: var(--mono);
+        font-size: 0.71rem;
+        color: var(--muted);
+      }
+
+      .cmd-preview-code {
+        margin: 0;
+        padding: 1rem 1.05rem;
+        font-family: var(--mono);
+        font-size: 0.83rem;
+        line-height: 1.65;
+        color: var(--lime);
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .efficiency-card {
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+        padding: 1rem 1.15rem;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.85rem;
+      }
+
+      @media (max-width: 520px) {
+        .efficiency-card {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .eff-metric b {
+        display: block;
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .eff-metric span {
+        font-family: var(--display);
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: var(--ink);
+      }
+
+      .eff-metric span.hi {
+        color: var(--lime);
+      }
+
+      .recipe-panel {
+        margin-top: 1.5rem;
+        border: 1px solid var(--line);
+        background: #07080b;
+      }
+
+      .recipe-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-elev);
+      }
+
+      .recipe-pre {
+        margin: 0;
+        padding: 1.25rem;
+        font-family: var(--mono);
+        font-size: 0.8rem;
+        line-height: 1.65;
+        overflow-x: auto;
+        color: var(--ink-2);
+      }
+
+      /* SECTION 05: RELEASES & ETHICS */
+      .dl-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+      }
+
+      @media (max-width: 960px) {
+        .dl-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (max-width: 560px) {
+        .dl-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .dl-card {
+        padding: 1.35rem;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 1.1rem;
+        transition: background 0.16s ease;
+      }
+
+      .dl-card:hover {
+        background: var(--bg-elev);
+      }
+
+      .dl-os {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--lime);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .dl-title {
+        margin: 0.25rem 0 0;
+        font-family: var(--display);
+        font-size: 1.15rem;
+        font-weight: 700;
+      }
+
+      .dl-arch {
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .dl-links {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+      }
+
+      .dl-file {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        padding: 0.5rem 0.65rem;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--ink);
+        transition: border-color 0.14s ease, color 0.14s ease;
+      }
+
+      .dl-file:hover {
+        border-color: var(--lime);
+        color: var(--lime);
+      }
+
+      .dl-sha {
+        font-family: var(--mono);
+        font-size: 0.69rem;
+        color: var(--muted);
+      }
+      .dl-sha:hover {
+        color: var(--ink);
+      }
+
+      .governance-row {
+        margin-top: 1.5rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.25rem;
+      }
+
+      @media (max-width: 860px) {
+        .governance-row {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .gov-box {
+        border: 1px solid var(--line);
+        background: var(--bg-panel);
+        padding: 1.35rem;
+      }
+
+      .gov-box.ethics {
+        border-color: rgba(255, 159, 28, 0.35);
+        background: rgba(255, 159, 28, 0.04);
+      }
+
+      .gov-box h3 {
+        margin: 0 0 0.55rem;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--amber);
+      }
+
+      .gov-box.ci h3 {
+        color: var(--lime);
+      }
+
+      .gov-box p {
+        margin: 0;
+        color: var(--ink-2);
+        font-size: 0.9rem;
+      }
+
+      /* Footer */
       footer {
         border-top: 1px solid var(--line);
-        padding: 2.2rem 0 2.6rem;
+        background: #050608;
+        padding: 2.5rem 0;
+      }
+
+      .foot-inner {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1.25rem;
+        font-family: var(--mono);
+        font-size: 0.76rem;
         color: var(--muted);
+      }
+
+      .foot-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.25rem;
+      }
+      .foot-links a:hover {
+        color: var(--lime);
+      }
+
+      /* Command Palette Modal */
+      .palette-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 250;
+        background: rgba(4, 5, 7, 0.78);
+        backdrop-filter: blur(8px);
+        display: none;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 12vh 1rem 1rem;
+      }
+      .palette-backdrop.open {
+        display: flex;
+      }
+
+      .palette-box {
+        width: 100%;
+        max-width: 580px;
+        border: 1px solid var(--line-strong);
+        background: var(--bg-panel);
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
+      }
+
+      .palette-input-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.8rem 1rem;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .palette-input-wrap span {
+        font-family: var(--mono);
+        color: var(--lime);
+        font-weight: 700;
+      }
+
+      #palette-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        font-family: var(--mono);
         font-size: 0.88rem;
+        outline: none;
       }
-      footer .heart {
-        color: var(--rejected);
+
+      .palette-list {
+        max-height: 320px;
+        overflow-y: auto;
       }
-      .note {
-        background: rgba(251, 191, 36, 0.07);
-        border: 1px solid rgba(251, 191, 36, 0.25);
-        border-radius: 12px;
-        padding: 0.9rem 1.1rem;
-        font-size: 0.9rem;
-        color: #fde68a;
-        max-width: 46rem;
+
+      .palette-item {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid var(--line);
+        padding: 0.72rem 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        cursor: pointer;
+        font-size: 0.86rem;
+      }
+
+      .palette-item:last-child {
+        border-bottom: none;
+      }
+
+      .palette-item:hover,
+      .palette-item.selected {
+        background: var(--lime-dim);
+        color: var(--lime);
+      }
+
+      .palette-item small {
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        color: var(--muted);
+      }
+
+      .palette-foot {
+        padding: 0.45rem 1rem;
+        border-top: 1px solid var(--line);
+        background: var(--bg);
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        color: var(--muted);
+        display: flex;
+        justify-content: space-between;
       }
     </style>
   </head>
   <body>
-    <nav>
-      <a class="brand" href="#top">
-        <svg width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
-          <rect x="20" y="30" width="60" height="40" rx="6" stroke="#38bdf8" stroke-width="8" fill="none" />
-          <path d="M20 32l30 22 30-22" stroke="#38bdf8" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        rcptx
-      </a>
-      <div class="links">
-        <a href="#features">Features</a>
-        <a href="#how-it-works">How it works</a>
-        <a href="#verdicts">Verdicts</a>
-        <a href="#usage">Usage</a>
-        <a href="#download">Download</a>
-        <a href="https://github.com/sametcn99/rcptx">GitHub</a>
-      </div>
-    </nav>
+    <div class="bg-grid" aria-hidden="true"></div>
+    <div class="scroll-rail" aria-hidden="true"><div class="scroll-rail-fill" id="scroll-fill"></div></div>
 
-    <header class="hero wrap" id="top">
-      <h1>rcptx</h1>
-      <p class="tag">
-        Smart, asynchronous SMTP reconnaissance &amp; deliverability probing — verify recipients, map MX posture and detect catch-all servers
-        <strong>without sending a single email</strong>.
-      </p>
+    <header class="hud">
+      <div class="hud-inner">
+        <a class="brand" href="#top" aria-label="rcptx home">
+          <svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true">
+            <rect x="6" y="6" width="88" height="88" fill="none" stroke="#323a4d" stroke-width="5" />
+            <path d="M22 33h56v34H22z" fill="none" stroke="#f0ede6" stroke-width="6" />
+            <path d="M22 35l28 19 28-19" fill="none" stroke="#c8ff2e" stroke-width="6" stroke-linecap="square" />
+          </svg>
+          <span>rcptx</span>
+          <span class="brand-tag">v0.1.5</span>
+        </a>
 
-      <div class="badges">
-        <a href="https://github.com/sametcn99/rcptx/actions/workflows/ci.yml"
-          ><img src="https://github.com/sametcn99/rcptx/actions/workflows/ci.yml/badge.svg" alt="CI status"
-        /></a>
-        <a href="https://github.com/sametcn99/rcptx/releases/latest"
-          ><img src="https://img.shields.io/github/v/release/sametcn99/rcptx?color=blue" alt="latest release"
-        /></a>
-        <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
-        <img src="https://img.shields.io/badge/rust-1.87%2B-orange" alt="rust version" />
-      </div>
+        <nav class="hud-nav" aria-label="Section navigation">
+          <a href="#pipeline" data-nav="pipeline"><span>01</span> PIPELINE</a>
+          <a href="#verdict-lab" data-nav="verdict-lab"><span>02</span> CLASSIFIER</a>
+          <a href="#fingerprints" data-nav="fingerprints"><span>03</span> FINGERPRINTS</a>
+          <a href="#workbench" data-nav="workbench"><span>04</span> WORKBENCH</a>
+          <a href="#releases" data-nav="releases"><span>05</span> RELEASES</a>
+        </nav>
 
-      <div class="cta">
-        <a class="btn primary" href="#download">⬇&nbsp; Download</a>
-        <a class="btn" href="https://github.com/sametcn99/rcptx">★&nbsp; View on GitHub</a>
-        <a class="btn" href="https://github.com/sametcn99/rcptx/releases/latest">🚀&nbsp; Releases</a>
-      </div>
-
-      <div class="install">
-        <code id="install-cmd">cargo install --git https://github.com/sametcn99/rcptx</code>
-        <button class="copy" data-copy="install-cmd" title="Copy to clipboard">copy</button>
-      </div>
-      <p class="platforms">Windows · Linux · macOS — single static binary, no C toolchain required</p>
-
-      <div class="term" role="img" aria-label="Example rcptx session">
-        <div class="term-bar"><i></i><i></i><i></i></div>
-        <pre><span class="t-dim">$</span> <span class="t-cmd">rcptx -d acme.com</span>
-<span class="t-dim"> acme.com
-──────────────────────────────────────────────────────────────────
-  MX        10 aspmx.l.google.com  |  20 alt1.aspmx.l.google.com
-  Provider  Google Workspace
-  SPF       v=spf1 include:_spf.google.com ~all
-  DMARC     v=DMARC1; p=quarantine
-  Catch-All no</span>
-┌────────────────────┬──────────┬──────┬───────┬─────┬─────┬──────────────┐
-│ Email              ┆ Status   ┆ Code ┆ ESC   ┆ Try ┆ ms  ┆ Message      ┆
-╞════════════════════╪══════════╪══════╪═══════╪═════╪═════╪══════════════╡
-│ careers@acme.com   ┆ <span class="t-green">accepted</span>   ┆ 250  ┆ 2.1.5 ┆ 1   ┆ 143 ┆ 2.1.5 OK     ┆
-│ hr@acme.com        ┆ <span class="t-green">accepted</span>   ┆ 250  ┆ 2.1.5 ┆ 1   ┆ 121 ┆ 2.1.5 OK     ┆
-│ info@acme.com      ┆ <span class="t-cyan">accepted*</span>  ┆ 250  ┆ 2.1.5 ┆ 1   ┆ 128 ┆ 2.1.5 OK     ┆
-│ nobody@acme.com    ┆ <span class="t-red">rejected</span>   ┆ 550  ┆ 5.1.1 ┆ 1   ┆ 118 ┆ User unknown ┆
-│ later@acme.com     ┆ <span class="t-yellow">temporary</span>  ┆ 450  ┆ 4.7.1 ┆ 2   ┆ 402 ┆ Greylisted   ┆
-└────────────────────┴──────────┴──────┴───────┴─────┴─────┴──────────────┘
-<span class="t-dim">Summary: 22 probe(s) across 1 domain(s) — 3 accepted · 1 catch-all* · 17 rejected · 1 temporary — 28.9s</span></pre>
+        <div class="hud-right">
+          <button class="cmd-trigger" id="open-palette" type="button" title="Open Command Palette (Ctrl+K or /)">
+            <span class="label">JUMP / RUN</span>
+            <kbd>⌘K</kbd>
+          </button>
+          <a class="hud-btn gh-desktop" href="https://github.com/sametcn99/rcptx" target="_blank" rel="noopener">
+            GITHUB ↗
+          </a>
+          <button class="hud-menu-btn" id="open-drawer" type="button" aria-expanded="false" aria-controls="mobile-drawer">
+            MENU //
+          </button>
+        </div>
       </div>
     </header>
 
-    <main>
-      <section class="wrap" id="features">
-        <h2>Features</h2>
-        <p class="lead">Everything you want from an SMTP recon tool, with the safety rails and politeness built in.</p>
-        <div class="grid">
-          <div class="card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-            </div>
-            <h3>Fully asynchronous</h3>
-            <p>Tokio-powered concurrency with bounded connections, per-operation timeouts and graceful Ctrl+C draining.</p>
+    <div class="mobile-drawer" id="mobile-drawer" role="dialog" aria-modal="true" aria-label="Mobile navigation">
+      <div class="mobile-drawer-top">
+        <span class="mono" style="color: var(--lime); font-size: 0.8rem">RCPTX // NAVIGATION</span>
+        <button class="hud-menu-btn" style="display: inline-flex" id="close-drawer" type="button">CLOSE ×</button>
+      </div>
+      <div class="mobile-drawer-links">
+        <a href="#pipeline"><span>01</span> Protocol Pipeline</a>
+        <a href="#verdict-lab"><span>02</span> RFC 3463 Verdict Lab</a>
+        <a href="#fingerprints"><span>03</span> 55-Needle Fingerprint Atlas</a>
+        <a href="#workbench"><span>04</span> CLI Workbench &amp; Recipes</a>
+        <a href="#releases"><span>05</span> Static Releases &amp; CI</a>
+        <a href="https://github.com/sametcn99/rcptx" target="_blank" rel="noopener"><span>↗</span> GitHub Repository</a>
+      </div>
+    </div>
+
+    <main id="top">
+      <!-- HERO -->
+      <section class="hero wrap">
+        <div class="hero-meta-bar">
+          <div>
+            <span class="pulse-dot" aria-hidden="true"></span>
+            <strong>PROTOCOL BOUNDARY:</strong> STOPS AT <code>RCPT TO</code> · ZERO EMAILS SENT
           </div>
-          <div class="card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 1l4 4-4 4" />
-                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                <path d="M7 23l-4-4 4-4" />
-                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-              </svg>
-            </div>
-            <h3>Session reuse (RSET)</h3>
-            <p>One connection probes a whole batch of candidates. Dropped mid-batch? It reconnects and resumes from the exact failure.</p>
+          <div class="hero-meta-chips">
+            <span>RUST EDITION 2024</span>
+            <span>#! [forbid(unsafe_code)]</span>
+            <span>PURE-RUST TLS</span>
+            <span>92 TESTS PASSING</span>
           </div>
-          <div class="card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <path d="M22 4L12 14.01l-3-3" />
-              </svg>
+        </div>
+
+        <div class="hero-grid frame">
+          <div class="hero-left">
+            <div>
+              <h1 class="hero-title">
+                Probe the <em>mailbox.</em><br />
+                Never send the mail.
+              </h1>
+              <p class="hero-sub">
+                <strong>rcptx</strong> is an asynchronous Rust SMTP reconnaissance &amp; deliverability engine.
+                It maps MX posture, detects catch-all traps, multiplexes probes across reused TLS sessions via
+                <code>RSET</code>, and classifies recipients using 3-digit codes plus RFC 3463 enhanced status codes.
+              </p>
             </div>
-            <h3>Accurate verdicts</h3>
-            <p>3-digit codes plus RFC 3463 enhanced status codes (5.1.1, 5.7.1, 4.7.1 …) classify each probe precisely.</p>
+
+            <div>
+              <div class="install-box">
+                <div class="install-tabs" role="tablist" aria-label="Install target">
+                  <button class="install-tab active" role="tab" aria-selected="true" data-install="cargo">cargo</button>
+                  <button class="install-tab" role="tab" aria-selected="false" data-install="linux">linux x64</button>
+                  <button class="install-tab" role="tab" aria-selected="false" data-install="macos-arm">macos arm64</button>
+                  <button class="install-tab" role="tab" aria-selected="false" data-install="macos-x64">macos intel</button>
+                  <button class="install-tab" role="tab" aria-selected="false" data-install="win">windows x64</button>
+                </div>
+                <div class="install-row">
+                  <code id="hero-install-cmd">cargo install --git https://github.com/sametcn99/rcptx</code>
+                  <button class="copy-btn" data-copy="hero-install-cmd" type="button">COPY</button>
+                </div>
+              </div>
+
+              <div class="hero-actions">
+                <a class="btn primary" href="#releases">DOWNLOAD v0.1.5 ↓</a>
+                <a class="btn" href="#verdict-lab">OPEN VERDICT LAB →</a>
+                <a class="btn" href="https://github.com/sametcn99/rcptx" target="_blank" rel="noopener">STAR ON GITHUB ↗</a>
+              </div>
+            </div>
           </div>
-          <div class="card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 6v6l4 2" />
-              </svg>
+
+          <!-- LIVE INTERACTIVE SMTP SESSION MULTIPLEXER -->
+          <div class="hero-right">
+            <div class="scope-head">
+              <span class="scope-title">
+                <span style="color: var(--lime)">●</span> LIVE SESSION MULTIPLEXER
+              </span>
+              <span class="mono tnum" id="scope-telemetry" style="color: var(--muted)">CONN #01 · REUSE 1/5</span>
             </div>
-            <h3>Catch-all detection</h3>
-            <p>Random UUID probes run before scanning; catch-all domains are flagged, and can be skipped entirely.</p>
+
+            <div class="scope-scenarios" role="tablist" aria-label="Simulation scenarios">
+              <button class="scenario-btn active" data-scenario="nominal" type="button">NOMINAL RSET</button>
+              <button class="scenario-btn" data-scenario="catchall" type="button">CATCH-ALL</button>
+              <button class="scenario-btn" data-scenario="failover" type="button">421 FAILOVER</button>
+              <button class="scenario-btn" data-scenario="greylist" type="button">450 RETRY</button>
+            </div>
+
+            <div class="scope-canvas-wrap">
+              <canvas id="smtp-scope" aria-label="Animated SMTP session multiplexing topology"></canvas>
+              <div class="scope-hud-overlay">
+                <div class="scope-hud-row">
+                  <span>CONCURRENCY: 2 WORKERS · PORT 25/STARTTLS</span>
+                  <span class="scope-cutoff">✕ DATA BOUNDARY</span>
+                </div>
+                <div class="scope-hud-row">
+                  <span id="scope-caption">Reusing 1 TLS session across 5 RCPT probes</span>
+                  <span class="tnum" id="scope-rtt">RTT 124ms</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="scope-wire">
+              <pre class="wire-lines" id="scope-wire-log"></pre>
+              <div class="wire-status-bar tnum">
+                <span id="scope-verdict-summary">VERDICT: accepted · 250 2.1.5 OK</span>
+                <span id="scope-handshakes">HANDSHAKES SAVED: 4 / 5</span>
+              </div>
+            </div>
           </div>
-          <div class="card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            </div>
-            <h3>DNS &amp; security recon</h3>
-            <p>MX (null-MX aware), SPF and DMARC in every report, plus provider fingerprinting for 40+ platforms.</p>
+        </div>
+
+        <div class="proof-strip">
+          <div class="proof-cell">
+            <div class="proof-num tnum">55<span>+</span></div>
+            <div class="proof-label">MX / SPF Fingerprints</div>
           </div>
-          <div class="card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-            </div>
-            <h3>TLS everywhere</h3>
-            <p>
-              Opportunistic / required / disabled STARTTLS, implicit TLS on 465, and <code>--insecure</code> for legacy servers — pure-Rust crypto.
-            </p>
+          <div class="proof-cell">
+            <div class="proof-num tnum">46</div>
+            <div class="proof-label">Built-In Local-Parts</div>
           </div>
-          <div class="card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 4v6h6" />
-                <path d="M20 20v-6h-6" />
-                <path d="M20 9A8 8 0 0 0 5.64 5.64L4 10m0 4l1.64 4.36A8 8 0 0 0 20 14" />
-              </svg>
-            </div>
-            <h3>Greylist-aware</h3>
-            <p>4xx replies are retried on your schedule; jittered pacing and connection caps keep you under the radar.</p>
+          <div class="proof-cell">
+            <div class="proof-num tnum">07</div>
+            <div class="proof-label">RFC 3463 Verdicts</div>
           </div>
-          <div class="card">
-            <div class="icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <path d="M14 2v6h6" />
-                <path d="M16 13H8" />
-                <path d="M16 17H8" />
-              </svg>
-            </div>
-            <h3>Four output formats</h3>
-            <p>
-              Human <code>table</code>, <code>json</code> document, streaming <code>jsonl</code> and <code>csv</code> — with an accepted-only filter.
-            </p>
+          <div class="proof-cell">
+            <div class="proof-num tnum">04</div>
+            <div class="proof-label">Table · JSON · JSONL · CSV</div>
+          </div>
+          <div class="proof-cell">
+            <div class="proof-num tnum">00</div>
+            <div class="proof-label">C Deps · Unsafe Blocks</div>
           </div>
         </div>
       </section>
 
-      <section class="wrap" id="how-it-works">
-        <h2>How it works</h2>
-        <p class="lead">A five-phase pipeline per domain — no email is ever delivered, the probe stops right after <code>RCPT TO</code>.</p>
-        <div class="pipeline">
-          <div class="step"><b>DNS recon</b><span>MX sorted by preference, SPF, DMARC, provider guess</span></div>
-          <div class="step"><b>Catch-all probe</b><span>Random UUID local-parts test address harvesting</span></div>
-          <div class="step"><b>Candidate probing</b><span>EHLO → STARTTLS → MAIL FROM → RCPT TO → RSET</span></div>
-          <div class="step"><b>Classification</b><span>SMTP code + enhanced status code → verdict</span></div>
-          <div class="step"><b>Report</b><span>table / json / jsonl / csv, streamed or written to file</span></div>
+      <!-- 01: PROTOCOL PIPELINE -->
+      <section class="section wrap reveal" id="pipeline">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">01 // PROTOCOL ARCHITECTURE</div>
+            <h2>Five phases. <em>Zero delivered payloads.</em></h2>
+          </div>
+          <p class="section-lead">
+            Every target domain flows through a deterministic async pipeline built on Tokio, Hickory DNS, and pure-Rust
+            <code>rustls</code>. Select a stage to inspect the wire mechanics.
+          </p>
         </div>
-        <p class="lead" style="margin-top: 1.6rem">
-          Failing over between MX hosts, reconnecting dropped sessions, retrying greylisted candidates, and checking GitHub Releases for updates — all
-          automatic.
-        </p>
+
+        <div class="pipeline-layout frame">
+          <div class="pipeline-steps" role="tablist" aria-label="Pipeline stages">
+            <button class="p-step active" data-stage="0" type="button">
+              <span class="p-step-idx tnum">01</span>
+              <span>
+                <span class="p-step-title">DNS &amp; Security Preflight</span>
+                <span class="p-step-sub">MX preference sort, Null-MX, SPF/DMARC, 55 fingerprints</span>
+              </span>
+              <span class="p-step-arrow">→</span>
+            </button>
+            <button class="p-step" data-stage="1" type="button">
+              <span class="p-step-idx tnum">02</span>
+              <span>
+                <span class="p-step-title">UUID Catch-All Detection</span>
+                <span class="p-step-sub">Random v4 probes trap accept-all domains before scanning</span>
+              </span>
+              <span class="p-step-arrow">→</span>
+            </button>
+            <button class="p-step" data-stage="2" type="button">
+              <span class="p-step-idx tnum">03</span>
+              <span>
+                <span class="p-step-title">RSET Session Multiplexing</span>
+                <span class="p-step-sub">Batch probes per TLS session with reconnect-and-resume</span>
+              </span>
+              <span class="p-step-arrow">→</span>
+            </button>
+            <button class="p-step" data-stage="3" type="button">
+              <span class="p-step-idx tnum">04</span>
+              <span>
+                <span class="p-step-title">RFC 3463 Verdict Engine</span>
+                <span class="p-step-sub">Stage + 3-digit code + enhanced code + policy heuristics</span>
+              </span>
+              <span class="p-step-arrow">→</span>
+            </button>
+            <button class="p-step" data-stage="4" type="button">
+              <span class="p-step-idx tnum">05</span>
+              <span>
+                <span class="p-step-title">Streaming &amp; Graceful Drain</span>
+                <span class="p-step-sub">Live JSONL/CSV emit, Ctrl+C partial preservation</span>
+              </span>
+              <span class="p-step-arrow">→</span>
+            </button>
+          </div>
+
+          <div class="pipeline-detail" id="pipeline-detail"></div>
+        </div>
+
+        <div class="cap-grid">
+          <div class="cap-cell">
+            <div class="cap-cell-top"><span>NET // 01</span><span>TOKIO</span></div>
+            <h3>Bounded Concurrency</h3>
+            <p>Per-domain worker pool with configurable jittered delays (<code>--delay-ms</code> / <code>--jitter-ms</code>) and per-stage timeouts.</p>
+          </div>
+          <div class="cap-cell">
+            <div class="cap-cell-top"><span>TLS // 02</span><span>RUSTLS</span></div>
+            <h3>Pure-Rust Crypto</h3>
+            <p>Built on <code>rustls-rustcrypto</code> — compiles cleanly without OpenSSL or a C toolchain. Supports STARTTLS and port 465 implicit TLS.</p>
+          </div>
+          <div class="cap-cell">
+            <div class="cap-cell-top"><span>MX // 03</span><span>RFC 5321</span></div>
+            <h3>Failover &amp; Null-MX</h3>
+            <p>Connect failures roll to backup MX hosts while real <code>550</code> answers stay authoritative. Handles RFC 7505 <code>.</code> null-MX records.</p>
+          </div>
+          <div class="cap-cell">
+            <div class="cap-cell-top"><span>OPS // 04</span><span>POLITE</span></div>
+            <h3>Greylist &amp; Anti-Block</h3>
+            <p>Automatic <code>4xx</code> retry rounds (<code>--retry-greylist</code>), randomized EHLOs, and plausible <code>--auto-mail-from</code> senders.</p>
+          </div>
+        </div>
       </section>
 
-      <section class="wrap" id="verdicts">
-        <h2>Verdicts</h2>
-        <p class="lead">Every candidate gets one of seven verdicts, derived from the 3-digit code and the RFC 3463 enhanced status code.</p>
-        <div class="table-wrap">
+      <!-- 02: VERDICT LAB -->
+      <section class="section wrap reveal" id="verdict-lab">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">02 // RFC 3463 VERDICT LAB</div>
+            <h2>Test the <em>classifier</em> live.</h2>
+          </div>
+          <p class="section-lead">
+            Simulate any SMTP server reply below. This runs the exact decision tree from
+            <code>src/scanner.rs::classify()</code> and renders the resulting <code>OutputSink</code> payload.
+          </p>
+        </div>
+
+        <div class="lab-grid frame">
+          <div class="lab-controls">
+            <span class="wb-group-label">QUICK REAL-WORLD SERVER RESPONSES</span>
+            <div class="lab-presets" id="lab-presets">
+              <button class="pill-btn active" data-preset="ok" type="button">250 2.1.5 OK</button>
+              <button class="pill-btn" data-preset="catchall" type="button">250 Catch-All</button>
+              <button class="pill-btn" data-preset="unknown" type="button">550 5.1.1 Unknown</button>
+              <button class="pill-btn" data-preset="greylist" type="button">450 4.7.1 Greylisted</button>
+              <button class="pill-btn" data-preset="rbl" type="button">550 5.7.1 DNSBL</button>
+              <button class="pill-btn" data-preset="mailfrom" type="button">MAIL FROM 554</button>
+              <button class="pill-btn" data-preset="vrfy" type="button">252 Indeterminate</button>
+              <button class="pill-btn" data-preset="timeout" type="button">TCP Timeout</button>
+            </div>
+
+            <div class="form-grid">
+              <div class="field">
+                <label for="sim-stage">Protocol Stage</label>
+                <select id="sim-stage">
+                  <option value="rcpt-to">rcpt-to (RCPT TO)</option>
+                  <option value="mail-from">mail-from (MAIL FROM)</option>
+                  <option value="tcp-connect">tcp-connect / transport error</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="sim-code">3-Digit SMTP Code</label>
+                <input id="sim-code" type="number" min="200" max="599" value="250" />
+              </div>
+              <div class="field">
+                <label for="sim-esc">RFC 3463 Enhanced Code</label>
+                <input id="sim-esc" type="text" value="2.1.5" placeholder="e.g. 5.1.1 or empty" />
+              </div>
+              <div class="field">
+                <label for="sim-catchall">Domain Catch-All Confirmed</label>
+                <select id="sim-catchall">
+                  <option value="false">no (false)</option>
+                  <option value="true">YES (true)</option>
+                </select>
+              </div>
+              <div class="field full">
+                <label for="sim-text">SMTP Server Reply / Error Text</label>
+                <input id="sim-text" type="text" value="2.1.5 Recipient OK" />
+              </div>
+            </div>
+          </div>
+
+          <div class="lab-output">
+            <div>
+              <div class="verdict-banner">
+                <div>
+                  <span class="wb-group-label" style="margin-bottom: 0.2rem">COMPUTED PROBE STATUS</span>
+                  <span class="chip accepted" id="sim-verdict-chip">accepted</span>
+                </div>
+                <div class="mono tnum" style="text-align: right; font-size: 0.76rem; color: var(--muted)">
+                  <div>STAGE: <strong id="sim-out-stage" style="color: var(--ink)">rcpt-to</strong></div>
+                  <div>CODE: <strong id="sim-out-code" style="color: var(--ink)">250 · 2.1.5</strong></div>
+                </div>
+              </div>
+
+              <div class="verdict-trace" id="sim-trace" style="margin-top: 0.9rem"></div>
+            </div>
+
+            <div>
+              <div class="format-tabs" role="tablist" aria-label="Output format">
+                <button class="format-tab active" data-fmt="json" type="button">JSON</button>
+                <button class="format-tab" data-fmt="jsonl" type="button">JSONL</button>
+                <button class="format-tab" data-fmt="csv" type="button">CSV</button>
+                <button class="format-tab" data-fmt="table" type="button">TABLE ROW</button>
+              </div>
+              <pre class="format-preview" id="sim-format-out"></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-shell">
           <table>
             <thead>
               <tr>
                 <th>Verdict</th>
-                <th>Trigger</th>
-                <th>Meaning</th>
+                <th>Trigger Condition</th>
+                <th>Operational Meaning</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><span class="chip accepted">accepted</span></td>
-                <td><code>250</code> / <code>251</code></td>
-                <td>Mailbox exists and accepts mail</td>
+                <td><code>250</code> / <code>251</code> when catch-all is not confirmed</td>
+                <td>Mailbox exists and accepts mail for this recipient</td>
               </tr>
               <tr>
                 <td><span class="chip accepted_catch_all">accepted_catch_all</span></td>
-                <td><code>250</code> on a catch-all domain</td>
-                <td>Accepted — but so is every other address</td>
+                <td><code>250</code> / <code>251</code> on a confirmed catch-all domain</td>
+                <td>Server accepted the candidate, but accepts random UUIDs too</td>
               </tr>
               <tr>
                 <td><span class="chip rejected">rejected</span></td>
-                <td><code>550 5.1.1</code> &amp; friends</td>
-                <td>User unknown / mailbox unavailable</td>
+                <td><code>550 5.1.1</code> / <code>5.1.2</code> / <code>5.1.10</code> or generic <code>5xx</code></td>
+                <td>User unknown / mailbox unavailable at this host</td>
               </tr>
               <tr>
                 <td><span class="chip temporary">temporary</span></td>
-                <td><code>4xx</code> (421/450/451/452)</td>
-                <td>Greylisted or rate-limited — try later</td>
+                <td><code>4xx</code> (<code>421</code>, <code>450</code>, <code>451</code>, <code>452</code>)</td>
+                <td>Greylisted or rate-limited — eligible for <code>--retry-greylist</code></td>
               </tr>
               <tr>
                 <td><span class="chip policy_blocked">policy_blocked</span></td>
-                <td><code>5.7.x</code>, <code>554</code>, MAIL FROM rejection</td>
-                <td>Anti-enumeration / blocklist policy</td>
+                <td><code>5.7.x</code>, <code>MAIL FROM</code> <code>5xx</code>, or policy/RBL hints</td>
+                <td>Sender-stage anti-enumeration or blocklist refusal (not mailbox state)</td>
               </tr>
               <tr>
                 <td><span class="chip indeterminate">indeterminate</span></td>
                 <td><code>252</code></td>
-                <td>Cannot VRFY user, but will accept</td>
+                <td>Server refuses to verify user identity, but will accept message</td>
               </tr>
               <tr>
                 <td><span class="chip error">error</span></td>
-                <td>timeout / TLS / EOF</td>
-                <td>Connection-level failure</td>
+                <td>TCP timeout, TLS handshake failure, EOF</td>
+                <td>Transport-level failure after MX failover attempts</td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
 
-      <section class="wrap" id="usage">
-        <h2>Usage</h2>
-        <p class="lead">A few practical recipes. Full reference with <code>rcptx --help</code>.</p>
-
-        <div class="term">
-          <div class="term-bar"><i></i><i></i><i></i></div>
-          <pre><span class="t-dim"># HR + executive hunt across a domain list, JSON report of hits only</span>
-<span class="t-dim">$</span> <span class="t-cmd">rcptx -D targets.txt -p hr,executive --only-accepted --format json -o hits.json</span>
-
-<span class="t-dim"># Stream accepted addresses as CSV, plausible random sender, custom resolver</span>
-<span class="t-dim">$</span> <span class="t-cmd">cat domains.txt | rcptx --stdin -l careers,people,ceo \
-    --auto-mail-from --dns-server 1.1.1.1 --format csv</span>
-
-<span class="t-dim"># Cautious scan of a hardened target: slow pacing, no catch-all waste, greylist retries</span>
-<span class="t-dim">$</span> <span class="t-cmd">rcptx -d strict-corp.com -p all -c 1 --delay-ms 2000 --jitter-ms 800 \
-    --max-rcpt-per-conn 3 --stop-on-catch-all --retry-greylist 2 --retry-delay 30</span>
-
-<span class="t-dim"># DNS-only posture check — zero SMTP traffic</span>
-<span class="t-dim">$</span> <span class="t-cmd">rcptx mx example.com --format json</span>
-
-<span class="t-dim"># Check for a newer release (also available as --check-update before any run)</span>
-<span class="t-dim">$</span> <span class="t-cmd">rcptx check-update</span>
-
-<span class="t-dim"># Provider fingerprints: list the table, see which needle matched a domain</span>
-<span class="t-dim">$</span> <span class="t-cmd">rcptx providers --category gateway</span>
-<span class="t-dim"> Provider fingerprints (21)
-┌──────────┬───────────────────────┬─────────────────────────────────────┐
-│ Category ┆ Needle                ┆ Provider                            ┆
-╞══════════╪═══════════════════════╪═════════════════════════════════════╡
-│ gateway  ┆ ppe-hosted.com        ┆ Proofpoint                          ┆
-│ gateway  ┆ mimecast.com          ┆ Mimecast                            ┆
-│ gateway  ┆ barracudanetworks.com ┆ Barracuda Email Security            ┆
-│ gateway  ┆ cudamail.com          ┆ Barracuda Email Security            ┆
-│ …        ┆ …                     ┆ …                                   ┆
-└──────────┴───────────────────────┴─────────────────────────────────────┘</span>
-<span class="t-dim">$</span> <span class="t-cmd">rcptx mx example.com -v</span>
-<span class="t-dim">  Matched   needle "google.com" matched MX host aspmx.l.google.com</span></pre>
+      <!-- 03: PROVIDER FINGERPRINT ATLAS -->
+      <section class="section wrap reveal" id="fingerprints">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">03 // PROVIDER FINGERPRINT ATLAS</div>
+            <h2>55 needles across <em>4 mail layers.</em></h2>
+          </div>
+          <p class="section-lead">
+            Inspected directly from <code>src/dns.rs::PROVIDER_FINGERPRINTS</code>. Test any MX exchange or SPF record
+            to trace exact ordered-needle provenance just like <code>rcptx mx &lt;domain&gt; -v</code>.
+          </p>
         </div>
 
-        <p class="lead" style="margin-top: 1.6rem">
-          Exit codes: <code>0</code> success (including Ctrl+C partial runs) · <code>1</code> configuration/runtime error · <code>2</code> outbound
-          port 25 appears blocked.
-        </p>
+        <div class="atlas-shell frame">
+          <div class="atlas-matcher">
+            <div>
+              <span class="wb-group-label">LIVE MX / SPF PROVENANCE MATCHER (rcptx mx -v)</span>
+              <div class="matcher-input-row">
+                <input
+                  id="mx-probe-input"
+                  type="text"
+                  value="acme-com.mail.protection.outlook.com"
+                  aria-label="Test MX hostname or SPF TXT record"
+                  placeholder="Enter MX hostname or v=spf1 record..."
+                />
+              </div>
+              <div class="matcher-samples">
+                <button class="pill-btn" data-sample="acme-com.mail.protection.outlook.com" type="button">M365 MX</button>
+                <button class="pill-btn" data-sample="aspmx.l.google.com" type="button">Google MX</button>
+                <button class="pill-btn" data-sample="mxa-0012a.pphosted.com" type="button">Proofpoint</button>
+                <button class="pill-btn" data-sample="route1.mx.cloudflare.net" type="button">Cloudflare</button>
+                <button class="pill-btn" data-sample="in1-smtp.messagingengine.com" type="button">Fastmail</button>
+                <button class="pill-btn" data-sample="v=spf1 include:_spf.google.com ~all" type="button">SPF Include</button>
+              </div>
+            </div>
+
+            <div class="matcher-result" id="mx-match-output"></div>
+          </div>
+
+          <div class="atlas-toolbar">
+            <div class="atlas-filters" id="atlas-filters">
+              <button class="pill-btn active" data-cat="all" type="button">ALL (55)</button>
+              <button class="pill-btn" data-cat="gateway" type="button">GATEWAY (21)</button>
+              <button class="pill-btn" data-cat="cloud suite" type="button">CLOUD SUITE (14)</button>
+              <button class="pill-btn" data-cat="hosting" type="button">HOSTING (17)</button>
+              <button class="pill-btn" data-cat="forwarding" type="button">FORWARDING (3)</button>
+            </div>
+            <input
+              class="atlas-search"
+              id="atlas-search"
+              type="search"
+              placeholder="Filter needle or provider..."
+              aria-label="Filter provider fingerprints"
+            />
+          </div>
+
+          <div class="atlas-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 64px">#</th>
+                  <th>Category</th>
+                  <th>Needle</th>
+                  <th>Identified Platform</th>
+                </tr>
+              </thead>
+              <tbody id="atlas-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
-      <section class="wrap" id="download">
-        <h2>Download</h2>
-        <p class="lead">Static release binaries with SHA-256 checksums for every platform, published by CI on every tag.</p>
-        <div class="dl-grid">
-          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-unknown-linux-gnu.tar.gz">
-            <b>🐧 Linux</b><span>x86_64 · glibc</span><span class="file">rcptx-x86_64-unknown-linux-gnu.tar.gz</span>
-          </a>
-          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-aarch64-apple-darwin.tar.gz">
-            <b>🍎 macOS</b><span>Apple Silicon (M1/M2/M3/M4)</span><span class="file">rcptx-aarch64-apple-darwin.tar.gz</span>
-          </a>
-          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-apple-darwin.tar.gz">
-            <b>🍎 macOS</b><span>Intel</span><span class="file">rcptx-x86_64-apple-darwin.tar.gz</span>
-          </a>
-          <a class="dl" href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-pc-windows-msvc.zip">
-            <b>🪟 Windows</b><span>x64</span><span class="file">rcptx-x86_64-pc-windows-msvc.zip</span>
-          </a>
+      <!-- 04: CLI WORKBENCH -->
+      <section class="section wrap reveal" id="workbench">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">04 // CLI WORKBENCH &amp; RECIPES</div>
+            <h2>Compose flags. <em>Measure handshakes.</em></h2>
+          </div>
+          <p class="section-lead">
+            Configure a scan profile using real <code>rcptx</code> flags and inspect the built-in dictionaries from
+            <code>src/presets.rs</code>, or browse copy-ready operational recipes.
+          </p>
         </div>
-        <p class="lead" style="margin-top: 1.6rem">Or install with cargo:</p>
-        <div class="install">
-          <code id="cargo-cmd">cargo install --git https://github.com/sametcn99/rcptx</code>
-          <button class="copy" data-copy="cargo-cmd" title="Copy to clipboard">copy</button>
+
+        <div class="workbench-grid frame">
+          <div class="wb-panel">
+            <div>
+              <span class="wb-group-label">TARGET SOURCE</span>
+              <div class="toggle-row" id="wb-target-mode">
+                <button class="pill-btn active" data-target="single" type="button">-d acme.com</button>
+                <button class="pill-btn" data-target="file" type="button">-D targets.txt</button>
+                <button class="pill-btn" data-target="stdin" type="button">--stdin</button>
+              </div>
+            </div>
+
+            <div>
+              <span class="wb-group-label">BUILT-IN PRESETS (-p / --preset) — CLICK TO INSPECT</span>
+              <div class="toggle-row" id="wb-presets">
+                <button class="pill-btn active" data-p="hr" type="button">hr (15)</button>
+                <button class="pill-btn active" data-p="general" type="button">general (7)</button>
+                <button class="pill-btn" data-p="support" type="button">support (6)</button>
+                <button class="pill-btn" data-p="tech" type="button">tech (7)</button>
+                <button class="pill-btn" data-p="executive" type="button">executive (11)</button>
+                <button class="pill-btn" data-p="all" type="button">all (46)</button>
+              </div>
+            </div>
+
+            <div class="preset-inspector">
+              <div class="mono" style="font-size: 0.72rem; color: var(--lime)" id="preset-inspector-title"></div>
+              <div class="preset-words" id="preset-inspector-words"></div>
+            </div>
+
+            <div class="form-grid">
+              <div class="field">
+                <label for="wb-conc">Concurrency (-c)</label>
+                <select id="wb-conc">
+                  <option value="1">1 (stealth)</option>
+                  <option value="2" selected>2 (default)</option>
+                  <option value="4">4 (fast)</option>
+                  <option value="8">8 (bulk)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="wb-maxrcpt">--max-rcpt-per-conn</label>
+                <select id="wb-maxrcpt">
+                  <option value="1">1 (fresh conn each)</option>
+                  <option value="3">3 (cautious)</option>
+                  <option value="5" selected>5 (default)</option>
+                  <option value="10">10 (aggressive reuse)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="wb-starttls">--starttls</label>
+                <select id="wb-starttls">
+                  <option value="opportunistic" selected>opportunistic (default)</option>
+                  <option value="required">required</option>
+                  <option value="disabled">disabled</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="wb-format">--format</label>
+                <select id="wb-format">
+                  <option value="table" selected>table (default)</option>
+                  <option value="json">json</option>
+                  <option value="jsonl">jsonl (streaming)</option>
+                  <option value="csv">csv (streaming)</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <span class="wb-group-label">SAFETY &amp; STEALTH FLAGS</span>
+              <div class="toggle-row" id="wb-flags">
+                <button class="pill-btn" data-flag="stopCatchAll" type="button">--stop-on-catch-all</button>
+                <button class="pill-btn" data-flag="onlyAccepted" type="button">--only-accepted</button>
+                <button class="pill-btn" data-flag="autoMailFrom" type="button">--auto-mail-from</button>
+                <button class="pill-btn" data-flag="randomEhlo" type="button">--random-ehlo</button>
+                <button class="pill-btn" data-flag="verbose" type="button">-v (transcript)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="wb-right">
+            <div class="cmd-preview-box">
+              <div class="cmd-preview-top">
+                <span>GENERATED COMMAND</span>
+                <button class="copy-btn" data-copy="wb-cmd-out" type="button">COPY</button>
+              </div>
+              <pre class="cmd-preview-code" id="wb-cmd-out"></pre>
+            </div>
+
+            <div>
+              <span class="wb-group-label">RSET SESSION REUSE EFFICIENCY ESTIMATE</span>
+              <div class="efficiency-card tnum">
+                <div class="eff-metric">
+                  <b>Candidate Probes</b>
+                  <span id="eff-candidates">22</span>
+                </div>
+                <div class="eff-metric">
+                  <b>TCP+TLS Handshakes</b>
+                  <span id="eff-handshakes">~5</span>
+                </div>
+                <div class="eff-metric">
+                  <b>Handshake Savings</b>
+                  <span class="hi" id="eff-savings">77%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mono" style="font-size: 0.74rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 0.9rem">
+              <strong style="color: var(--ink)">EXIT CODES:</strong>
+              <code>0</code> completed (incl. Ctrl+C partial) ·
+              <code>1</code> config/runtime error ·
+              <code>2</code> all TCP connects timed out (port 25 blocked)
+            </div>
+          </div>
         </div>
-        <div class="note" style="margin-top: 1.8rem">
-          <strong>Ethics:</strong> probe only domains you have a legitimate reason to investigate — your own infrastructure, authorized assessments or
-          deliverability research. Recipient enumeration may be restricted by law or terms of service in your jurisdiction.
+
+        <div class="recipe-panel frame">
+          <div class="recipe-tabs" id="recipe-tabs" role="tablist" aria-label="CLI recipes">
+            <button class="install-tab active" data-recipe="recon" type="button">HR + EXEC HUNT</button>
+            <button class="install-tab" data-recipe="stream" type="button">STDIN STREAM CSV</button>
+            <button class="install-tab" data-recipe="hardened" type="button">HARDENED TARGET</button>
+            <button class="install-tab" data-recipe="dns" type="button">DNS-ONLY (MX / PROVIDERS)</button>
+            <button class="install-tab" data-recipe="debug" type="button">WIRE TRANSCRIPT (-v)</button>
+          </div>
+          <pre class="recipe-pre" id="recipe-pre"></pre>
+        </div>
+      </section>
+
+      <!-- 05: RELEASES & GOVERNANCE -->
+      <section class="section wrap reveal" id="releases">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">05 // STATIC DISTRIBUTIONS &amp; CI</div>
+            <h2>Zero runtime deps. <em>Checksummed builds.</em></h2>
+          </div>
+          <p class="section-lead">
+            Every tagged release compiles in GitHub Actions into standalone binaries with SHA-256 checksums. No OpenSSL,
+            no libc crypto glue, no external runtime.
+          </p>
+        </div>
+
+        <div class="dl-grid frame">
+          <div class="dl-card">
+            <div>
+              <div class="dl-os">LINUX · GLIBC</div>
+              <h3 class="dl-title">Linux x86_64</h3>
+              <div class="dl-arch">Static release archive</div>
+            </div>
+            <div class="dl-links">
+              <a
+                class="dl-file"
+                href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-unknown-linux-gnu.tar.gz"
+              >
+                <span>.tar.gz</span><span>↓</span>
+              </a>
+              <a
+                class="dl-sha"
+                href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-unknown-linux-gnu.tar.gz.sha256"
+              >
+                rcptx-x86_64-unknown-linux-gnu.tar.gz.sha256
+              </a>
+            </div>
+          </div>
+
+          <div class="dl-card">
+            <div>
+              <div class="dl-os">MACOS · APPLE SILICON</div>
+              <h3 class="dl-title">macOS ARM64</h3>
+              <div class="dl-arch">M1 / M2 / M3 / M4 series</div>
+            </div>
+            <div class="dl-links">
+              <a
+                class="dl-file"
+                href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-aarch64-apple-darwin.tar.gz"
+              >
+                <span>.tar.gz</span><span>↓</span>
+              </a>
+              <a
+                class="dl-sha"
+                href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-aarch64-apple-darwin.tar.gz.sha256"
+              >
+                rcptx-aarch64-apple-darwin.tar.gz.sha256
+              </a>
+            </div>
+          </div>
+
+          <div class="dl-card">
+            <div>
+              <div class="dl-os">MACOS · X86_64</div>
+              <h3 class="dl-title">macOS Intel</h3>
+              <div class="dl-arch">x86_64 Darwin build</div>
+            </div>
+            <div class="dl-links">
+              <a
+                class="dl-file"
+                href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-apple-darwin.tar.gz"
+              >
+                <span>.tar.gz</span><span>↓</span>
+              </a>
+              <a
+                class="dl-sha"
+                href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-apple-darwin.tar.gz.sha256"
+              >
+                rcptx-x86_64-apple-darwin.tar.gz.sha256
+              </a>
+            </div>
+          </div>
+
+          <div class="dl-card">
+            <div>
+              <div class="dl-os">WINDOWS · MSVC</div>
+              <h3 class="dl-title">Windows x64</h3>
+              <div class="dl-arch">Native x86_64 executable</div>
+            </div>
+            <div class="dl-links">
+              <a
+                class="dl-file"
+                href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-pc-windows-msvc.zip"
+              >
+                <span>.zip</span><span>↓</span>
+              </a>
+              <a
+                class="dl-sha"
+                href="https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-pc-windows-msvc.zip.sha256"
+              >
+                rcptx-x86_64-pc-windows-msvc.zip.sha256
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div class="governance-row">
+          <div class="gov-box ci">
+            <h3>CI Matrix &amp; Self-Updates</h3>
+            <p>
+              GitHub Actions enforces <code>cargo fmt --all --check</code>, <code>cargo clippy --all-targets -- -D warnings</code>,
+              and <strong>92 automated tests</strong> (84 unit + 8 end-to-end scripted fake-SMTP integration tests) across
+              Ubuntu, Windows, and macOS. Run <code>rcptx check-update</code> or pass <code>--check-update</code> anytime.
+            </p>
+          </div>
+
+          <div class="gov-box ethics">
+            <h3>Authorized &amp; Ethical Reconnaissance</h3>
+            <p>
+              Probe only domains you are authorized to evaluate (your own mail infrastructure, permitted security assessments,
+              or deliverability verification). Rate-limiting defaults (<code>--concurrency 2</code>, <code>--delay-ms 300</code>,
+              <code>--jitter-ms 150</code>) are tuned to stay gentle on remote MX hosts.
+            </p>
+          </div>
         </div>
       </section>
     </main>
 
     <footer>
-      <div class="wrap" style="display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center">
+      <div class="wrap foot-inner">
         <div>
-          <strong style="color: var(--text)">rcptx</strong> — built with <span class="heart">♥</span> in Rust by
-          <a href="https://github.com/sametcn99">sametcn99</a> · MIT
+          <strong style="color: var(--ink)">rcptx</strong> · MIT License · Crafted in Rust by
+          <a href="https://github.com/sametcn99" target="_blank" rel="noopener" style="color: var(--lime)">sametcn99</a>
         </div>
-        <div style="margin-left: auto; display: flex; gap: 1rem; flex-wrap: wrap">
-          <a href="https://github.com/sametcn99/rcptx">GitHub</a>
-          <a href="https://github.com/sametcn99/rcptx/releases">Releases</a>
-          <a href="https://github.com/sametcn99/rcptx/issues">Issues</a>
-          <a href="https://github.com/sametcn99/rcptx/actions">CI</a>
+        <div class="foot-links">
+          <a href="https://github.com/sametcn99/rcptx" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/sametcn99/rcptx/releases" target="_blank" rel="noopener">Releases</a>
+          <a href="https://github.com/sametcn99/rcptx/issues" target="_blank" rel="noopener">Issues</a>
+          <a href="https://github.com/sametcn99/rcptx/actions" target="_blank" rel="noopener">Actions CI</a>
         </div>
       </div>
     </footer>
 
+    <!-- COMMAND PALETTE -->
+    <div class="palette-backdrop" id="palette-backdrop" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div class="palette-box">
+        <div class="palette-input-wrap">
+          <span>&gt;_</span>
+          <input id="palette-input" type="text" placeholder="Type a section, command or action..." autocomplete="off" />
+        </div>
+        <div class="palette-list" id="palette-list"></div>
+        <div class="palette-foot">
+          <span>↑↓ NAVIGATE · ENTER EXECUTE</span>
+          <span>ESC CLOSE</span>
+        </div>
+      </div>
+    </div>
+
     <script>
-      document.querySelectorAll(".copy").forEach(function (button) {
-        button.addEventListener("click", function () {
-          var source = document.getElementById(button.dataset.copy)
-          var text = source ? source.textContent : ""
-          var done = function () {
-            var original = button.textContent
-            button.textContent = "copied!"
+      (function () {
+        "use strict";
+
+        /* -----------------------------------------------------------
+         * Real source data mirrored directly from rcptx Rust modules
+         * ----------------------------------------------------------- */
+        var PROVIDER_FINGERPRINTS = [
+          { cat: "gateway", needle: "ppe-hosted.com", provider: "Proofpoint" },
+          { cat: "gateway", needle: "pphosted.com", provider: "Proofpoint" },
+          { cat: "gateway", needle: "ppops.net", provider: "Proofpoint" },
+          { cat: "gateway", needle: "mimecast.com", provider: "Mimecast" },
+          { cat: "gateway", needle: "barracudanetworks.com", provider: "Barracuda Email Security" },
+          { cat: "gateway", needle: "cudamail.com", provider: "Barracuda Email Security" },
+          { cat: "gateway", needle: "iphmx.com", provider: "Cisco Email Security (IronPort)" },
+          { cat: "gateway", needle: "messagelabs.com", provider: "Symantec / Broadcom MessageLabs" },
+          { cat: "gateway", needle: "trendmicro.com", provider: "Trend Micro Email Security" },
+          { cat: "gateway", needle: "spamd.one", provider: "Sophos Email" },
+          { cat: "gateway", needle: "vadesecure.com", provider: "Vade for Email" },
+          { cat: "gateway", needle: "hornetsecurity.com", provider: "Hornetsecurity 365 Total Protection" },
+          { cat: "gateway", needle: "abnormal.ai", provider: "Abnormal Security" },
+          { cat: "gateway", needle: "avanan.com", provider: "Check Point Harmony Email (Avanan)" },
+          { cat: "gateway", needle: "checkpoint.com", provider: "Check Point Harmony Email (Avanan)" },
+          { cat: "gateway", needle: "appriver.com", provider: "AppRiver" },
+          { cat: "gateway", needle: "mailassure.com", provider: "N-able Mail Assure (SpamExperts)" },
+          { cat: "gateway", needle: "spamexperts.com", provider: "N-able Mail Assure (SpamExperts)" },
+          { cat: "gateway", needle: "reflexion.net", provider: "Reflexion Email Security" },
+          { cat: "gateway", needle: "retarus.com", provider: "Retarus" },
+          { cat: "gateway", needle: "retarus.de", provider: "Retarus" },
+          { cat: "cloud suite", needle: "protection.outlook.com", provider: "Microsoft 365 / Exchange Online" },
+          { cat: "cloud suite", needle: "outlook.com", provider: "Microsoft 365 / Exchange Online" },
+          { cat: "cloud suite", needle: "google.com", provider: "Google Workspace" },
+          { cat: "cloud suite", needle: "googlemail.com", provider: "Google Workspace" },
+          { cat: "cloud suite", needle: "psmtp.com", provider: "Google Postini (legacy Message Security)" },
+          { cat: "cloud suite", needle: "zoho", provider: "Zoho Mail" },
+          { cat: "cloud suite", needle: "icloud.com", provider: "Apple iCloud Mail" },
+          { cat: "cloud suite", needle: "yandex", provider: "Yandex 360" },
+          { cat: "cloud suite", needle: "amazonaws.com", provider: "Amazon WorkMail / SES" },
+          { cat: "cloud suite", needle: "aliyun", provider: "Alibaba Cloud Mail (Qiye)" },
+          { cat: "cloud suite", needle: "qq.com", provider: "QQ Mail / Tencent Exmail" },
+          { cat: "cloud suite", needle: "163.com", provider: "NetEase Mail" },
+          { cat: "cloud suite", needle: "126.com", provider: "NetEase Mail" },
+          { cat: "cloud suite", needle: "naver.com", provider: "Naver Mail" },
+          { cat: "hosting", needle: "messagingengine.com", provider: "Fastmail" },
+          { cat: "hosting", needle: "protonmail.ch", provider: "Proton Mail" },
+          { cat: "hosting", needle: "protonmail.com", provider: "Proton Mail" },
+          { cat: "hosting", needle: "gmx.net", provider: "GMX" },
+          { cat: "hosting", needle: "gmx.com", provider: "GMX" },
+          { cat: "hosting", needle: "emailsrvr.com", provider: "Rackspace Email" },
+          { cat: "hosting", needle: "secureserver.net", provider: "GoDaddy" },
+          { cat: "hosting", needle: "privateemail.com", provider: "Namecheap Private Email" },
+          { cat: "hosting", needle: "hostinger.com", provider: "Hostinger Email" },
+          { cat: "hosting", needle: "hostgator.com", provider: "HostGator" },
+          { cat: "hosting", needle: "bluehost.com", provider: "Bluehost" },
+          { cat: "hosting", needle: "rzone.de", provider: "STRATO AG" },
+          { cat: "hosting", needle: "kundenserver.de", provider: "IONOS by 1&1" },
+          { cat: "hosting", needle: "perfora.net", provider: "IONOS by 1&1" },
+          { cat: "hosting", needle: "ovh.net", provider: "OVHcloud" },
+          { cat: "hosting", needle: "mail.gandi.net", provider: "Gandi Mail" },
+          { cat: "hosting", needle: "oxcs.net", provider: "Open-Xchange (hosted)" },
+          { cat: "forwarding", needle: "mx.cloudflare.net", provider: "Cloudflare Email Routing" },
+          { cat: "forwarding", needle: "improvmx.com", provider: "ImprovMX (forwarding)" },
+          { cat: "forwarding", needle: "forwardemail.net", provider: "Forward Email (forwarding)" }
+        ];
+
+        var PRESETS = {
+          hr: ["careers", "career", "jobs", "job", "hr", "humanresources", "recruitment", "recruiting", "talent", "talentacquisition", "people", "peopleops", "work", "join", "joinus"],
+          general: ["info", "contact", "hello", "office", "mail", "press", "media"],
+          support: ["support", "help", "helpdesk", "service", "billing", "sales"],
+          tech: ["admin", "security", "webmaster", "postmaster", "hostmaster", "devops", "it"],
+          executive: ["ceo", "cfo", "coo", "cto", "cio", "founder", "president", "board", "chairman", "ir", "investors"]
+        };
+
+        var POLICY_HINTS = [
+          "policy", "blocked", "block list", "blacklist", "rbl", "dnsbl",
+          "spam", "abuse", "not permitted", "unauthorized", "no relaying",
+          "reputation", "rejected by recipient"
+        ];
+
+        /* -----------------------------------------------------------
+         * Copy buttons & Hero install switcher
+         * ----------------------------------------------------------- */
+        var INSTALL_SNIPPETS = {
+          cargo: "cargo install --git https://github.com/sametcn99/rcptx",
+          linux: "curl -LO https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-unknown-linux-gnu.tar.gz && tar -xzf rcptx-x86_64-unknown-linux-gnu.tar.gz",
+          "macos-arm": "curl -LO https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-aarch64-apple-darwin.tar.gz && tar -xzf rcptx-aarch64-apple-darwin.tar.gz",
+          "macos-x64": "curl -LO https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-apple-darwin.tar.gz && tar -xzf rcptx-x86_64-apple-darwin.tar.gz",
+          win: "Invoke-WebRequest -Uri https://github.com/sametcn99/rcptx/releases/latest/download/rcptx-x86_64-pc-windows-msvc.zip -OutFile rcptx.zip; Expand-Archive rcptx.zip"
+        };
+
+        document.querySelectorAll(".install-tabs .install-tab[data-install]").forEach(function (tab) {
+          tab.addEventListener("click", function () {
+            document.querySelectorAll(".install-tabs .install-tab[data-install]").forEach(function (t) {
+              t.classList.remove("active");
+              t.setAttribute("aria-selected", "false");
+            });
+            tab.classList.add("active");
+            tab.setAttribute("aria-selected", "true");
+            var codeEl = document.getElementById("hero-install-cmd");
+            codeEl.textContent = INSTALL_SNIPPETS[tab.dataset.install] || INSTALL_SNIPPETS.cargo;
+          });
+        });
+
+        function copyText(text, btn) {
+          var markCopied = function () {
+            if (!btn) return;
+            var prev = btn.textContent;
+            btn.textContent = "COPIED ✓";
+            btn.classList.add("copied");
             setTimeout(function () {
-              button.textContent = original
-            }, 1200)
-          }
+              btn.textContent = prev;
+              btn.classList.remove("copied");
+            }, 1300);
+          };
           if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(done)
+            navigator.clipboard.writeText(text).then(markCopied);
           } else {
-            var area = document.createElement("textarea")
-            area.value = text
-            document.body.appendChild(area)
-            area.select()
-            document.execCommand("copy")
-            document.body.removeChild(area)
-            done()
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            markCopied();
           }
-        })
-      })
+        }
+
+        document.querySelectorAll("[data-copy]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var el = document.getElementById(btn.dataset.copy);
+            copyText(el ? el.textContent : "", btn);
+          });
+        });
+
+        /* -----------------------------------------------------------
+         * Scroll progress rail, active nav spy, reveal observer, drawer
+         * ----------------------------------------------------------- */
+        var scrollFill = document.getElementById("scroll-fill");
+        var navLinks = document.querySelectorAll(".hud-nav a[data-nav]");
+        var sections = ["pipeline", "verdict-lab", "fingerprints", "workbench", "releases"]
+          .map(function (id) { return document.getElementById(id); })
+          .filter(Boolean);
+
+        function onScroll() {
+          var max = document.documentElement.scrollHeight - window.innerHeight;
+          var pct = max > 0 ? Math.min(100, Math.max(0, (window.scrollY / max) * 100)) : 0;
+          scrollFill.style.width = pct.toFixed(2) + "%";
+
+          var currentId = "";
+          for (var i = 0; i < sections.length; i++) {
+            var rect = sections[i].getBoundingClientRect();
+            if (rect.top <= 160) currentId = sections[i].id;
+          }
+          navLinks.forEach(function (link) {
+            link.classList.toggle("active", link.dataset.nav === currentId);
+          });
+        }
+        window.addEventListener("scroll", onScroll, { passive: true });
+        onScroll();
+
+        if ("IntersectionObserver" in window) {
+          var revObs = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) {
+              if (e.isIntersecting) {
+                e.target.classList.add("in");
+                revObs.unobserve(e.target);
+              }
+            });
+          }, { threshold: 0.08 });
+          document.querySelectorAll(".reveal").forEach(function (el) { revObs.observe(el); });
+        } else {
+          document.querySelectorAll(".reveal").forEach(function (el) { el.classList.add("in"); });
+        }
+
+        var drawer = document.getElementById("mobile-drawer");
+        var openDrawerBtn = document.getElementById("open-drawer");
+        var closeDrawerBtn = document.getElementById("close-drawer");
+        function setDrawer(open) {
+          drawer.classList.toggle("open", open);
+          openDrawerBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+        openDrawerBtn.addEventListener("click", function () { setDrawer(true); });
+        closeDrawerBtn.addEventListener("click", function () { setDrawer(false); });
+        drawer.querySelectorAll("a").forEach(function (a) {
+          a.addEventListener("click", function () { setDrawer(false); });
+        });
+
+        /* -----------------------------------------------------------
+         * Hero Interactive SMTP Multiplexer Canvas & Wire Transcript
+         * ----------------------------------------------------------- */
+        var SCENARIOS = {
+          nominal: {
+            telemetry: "CONN #01 · REUSE 3/5",
+            caption: "Reusing 1 TLS session across 5 RCPT probes",
+            rtt: "RTT 121ms",
+            verdict: "VERDICT: accepted · 250 2.1.5 OK",
+            handshakes: "HANDSHAKES SAVED: 4 / 5",
+            color: "#c8ff2e",
+            failover: false,
+            mx1Down: false,
+            lines: [
+              { cls: "wire-line-dim", text: "$ rcptx -d acme.com -v" },
+              { cls: "wire-line-tx", text: "[conn#1] >>> MAIL FROM:<probe@example.com>" },
+              { cls: "wire-line-rx-ok", text: "[conn#1] <<< 250 2.1.0 OK" },
+              { cls: "wire-line-tx", text: "[conn#1] >>> RCPT TO:<careers@acme.com>" },
+              { cls: "wire-line-rx-ok", text: "[conn#1] <<< 250 2.1.5 OK  [accepted · 143ms]" },
+              { cls: "wire-line-dim", text: "[conn#1] >>> RSET  (session kept open for hr@acme.com)" }
+            ]
+          },
+          catchall: {
+            telemetry: "PREFLIGHT · UUID CHECK",
+            caption: "Random UUID local-parts probe catch-all trap first",
+            rtt: "RTT 128ms",
+            verdict: "VERDICT: accepted_catch_all · --stop-on-catch-all",
+            handshakes: "WASTED PROBES AVOIDED: 22",
+            color: "#2ce6d2",
+            failover: false,
+            mx1Down: false,
+            lines: [
+              { cls: "wire-line-dim", text: "$ rcptx -d trap.example --stop-on-catch-all -v" },
+              { cls: "wire-line-tx", text: "[catch-all 1/2] >>> RCPT TO:<7f3a19b2...probe@trap.example>" },
+              { cls: "wire-line-rx-cyan", text: "[catch-all 1/2] <<< 250 2.1.5 Recipient OK" },
+              { cls: "wire-line-tx", text: "[catch-all 2/2] >>> RCPT TO:<e9c408d1...probe@trap.example>" },
+              { cls: "wire-line-rx-cyan", text: "[catch-all 2/2] <<< 250 2.1.5 Recipient OK" },
+              { cls: "wire-line-dim", text: "note: catch-all confirmed (2/2) — candidate scan skipped" }
+            ]
+          },
+          failover: {
+            telemetry: "MX FAILOVER · mx1 → mx2",
+            caption: "421 drop mid-batch → reconnect & resume exact candidate",
+            rtt: "RTT 214ms",
+            verdict: "RESUMED AT cto@acme.com ON alt1.aspmx.l.google.com",
+            handshakes: "TRANSPARENT RESUME: 0 LOST",
+            color: "#ff9f1c",
+            failover: true,
+            mx1Down: true,
+            lines: [
+              { cls: "wire-line-tx", text: "[conn#1 @ mx1:10] >>> RCPT TO:<cto@acme.com>" },
+              { cls: "wire-line-rx-err", text: "[conn#1 @ mx1:10] <<< 421 4.7.0 Closing transmission channel" },
+              { cls: "wire-line-rx-warn", text: "failover: connecting to mx2:20 (alt1.aspmx.l.google.com)..." },
+              { cls: "wire-line-dim", text: "[conn#2 @ mx2:20] >>> EHLO + STARTTLS + MAIL FROM" },
+              { cls: "wire-line-tx", text: "[conn#2 @ mx2:20] >>> RCPT TO:<cto@acme.com>  (resumed)" },
+              { cls: "wire-line-rx-ok", text: "[conn#2 @ mx2:20] <<< 250 2.1.5 OK  [accepted]" }
+            ]
+          },
+          greylist: {
+            telemetry: "RETRY ROUND 1/1 · +15s",
+            caption: "4xx reply queued for retry round while 5xx stay final",
+            rtt: "RTT 402ms",
+            verdict: "VERDICT: temporary → retry → accepted",
+            handshakes: "ATTEMPTS: 2 · ESC 4.7.1 → 2.1.5",
+            color: "#ff9f1c",
+            failover: false,
+            mx1Down: false,
+            lines: [
+              { cls: "wire-line-tx", text: "[round 0] >>> RCPT TO:<press@acme.com>" },
+              { cls: "wire-line-rx-warn", text: "[round 0] <<< 450 4.7.1 Greylisted, try again later" },
+              { cls: "wire-line-dim", text: "scheduler: sleeping --retry-delay 15s (interruptible)..." },
+              { cls: "wire-line-tx", text: "[round 1] >>> MAIL FROM:<probe@example.com>" },
+              { cls: "wire-line-tx", text: "[round 1] >>> RCPT TO:<press@acme.com>" },
+              { cls: "wire-line-rx-ok", text: "[round 1] <<< 250 2.1.5 OK  [accepted · attempt #2]" }
+            ]
+          }
+        };
+
+        var activeScenarioKey = "nominal";
+        var wireEl = document.getElementById("scope-wire-log");
+        var scopeTelemetry = document.getElementById("scope-telemetry");
+        var scopeCaption = document.getElementById("scope-caption");
+        var scopeRtt = document.getElementById("scope-rtt");
+        var scopeVerdictSummary = document.getElementById("scope-verdict-summary");
+        var scopeHandshakes = document.getElementById("scope-handshakes");
+
+        function applyScenario(key) {
+          activeScenarioKey = key;
+          var s = SCENARIOS[key];
+          scopeTelemetry.textContent = s.telemetry;
+          scopeCaption.textContent = s.caption;
+          scopeRtt.textContent = s.rtt;
+          scopeVerdictSummary.textContent = s.verdict;
+          scopeHandshakes.textContent = s.handshakes;
+          wireEl.innerHTML = s.lines.map(function (l) {
+            return '<div class="' + l.cls + '">' + escapeHtml(l.text) + "</div>";
+          }).join("");
+        }
+
+        document.querySelectorAll(".scenario-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            document.querySelectorAll(".scenario-btn").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            applyScenario(btn.dataset.scenario);
+          });
+        });
+        applyScenario("nominal");
+
+        /* Canvas 60fps multiplexer */
+        var canvas = document.getElementById("smtp-scope");
+        var ctx = canvas.getContext("2d");
+        var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var animTick = 0;
+
+        function resizeCanvas() {
+          var rect = canvas.parentElement.getBoundingClientRect();
+          var dpr = Math.min(window.devicePixelRatio || 1, 2);
+          canvas.width = Math.max(300, Math.floor(rect.width * dpr));
+          canvas.height = Math.max(200, Math.floor(rect.height * dpr));
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        resizeCanvas();
+        window.addEventListener("resize", resizeCanvas);
+
+        function drawScope() {
+          var w = canvas.parentElement.clientWidth || 500;
+          var h = canvas.parentElement.clientHeight || 270;
+          var s = SCENARIOS[activeScenarioKey];
+          ctx.clearRect(0, 0, w, h);
+
+          // Subtle coordinate ticks
+          ctx.strokeStyle = "rgba(50, 58, 77, 0.35)";
+          ctx.lineWidth = 1;
+          for (var gx = 32; gx < w; gx += 48) {
+            ctx.beginPath();
+            ctx.moveTo(gx, 0);
+            ctx.lineTo(gx, h);
+            ctx.stroke();
+          }
+
+          var leftX = w * 0.16;
+          var midX = w * 0.49;
+          var rightX = w * 0.83;
+          var yTop = h * 0.36;
+          var yBot = h * 0.68;
+
+          // Connection paths
+          function drawLink(x1, y1, x2, y2, active, dashed, col) {
+            ctx.save();
+            ctx.beginPath();
+            if (dashed) ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = active ? col : "#283042";
+            ctx.lineWidth = active ? 1.5 : 1;
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          drawLink(leftX, yTop, midX, yTop, true, false, s.color);
+          drawLink(leftX, yBot, midX, yBot, !s.mx1Down, false, "#6e7789");
+          drawLink(midX, yTop, rightX, yTop, !s.mx1Down, s.mx1Down, s.mx1Down ? "#ff5449" : s.color);
+          drawLink(midX, yTop, rightX, yBot, s.failover, false, s.color);
+          drawLink(midX, yBot, rightX, yBot, !s.failover, true, "#323a4d");
+
+          // DATA hard-cutoff line near rightX
+          ctx.save();
+          ctx.setLineDash([3, 4]);
+          ctx.strokeStyle = "rgba(255, 84, 73, 0.45)";
+          ctx.beginPath();
+          ctx.moveTo(rightX - 42, 34);
+          ctx.lineTo(rightX - 42, h - 30);
+          ctx.stroke();
+          ctx.restore();
+
+          // Animated packets
+          var t = reduceMotion ? 0.45 : (animTick * 0.016) % 1;
+          var t2 = reduceMotion ? 0.75 : (animTick * 0.016 + 0.5) % 1;
+
+          function drawPacket(x1, y1, x2, y2, prog, col, label) {
+            var px = x1 + (x2 - x1) * prog;
+            var py = y1 + (y2 - y1) * prog;
+            ctx.fillStyle = col;
+            ctx.fillRect(px - 4, py - 4, 8, 8);
+            ctx.fillStyle = "rgba(240, 237, 230, 0.85)";
+            ctx.font = "600 10px 'JetBrains Mono', monospace";
+            ctx.fillText(label, px - 14, py - 10);
+          }
+
+          drawPacket(leftX, yTop, midX, yTop, t, s.color, activeScenarioKey === "catchall" ? "UUID" : "RCPT");
+          if (s.failover) {
+            drawPacket(midX, yTop, rightX, yBot, t2, "#ff9f1c", "RESUME");
+          } else {
+            drawPacket(midX, yTop, rightX, yTop, t2, s.color, activeScenarioKey === "greylist" ? "450→250" : "RSET");
+          }
+
+          // Architectural Nodes
+          function drawNode(x, y, title, sub, strokeCol) {
+            var bw = 96;
+            var bh = 38;
+            ctx.fillStyle = "#0c0e13";
+            ctx.fillRect(x - bw / 2, y - bh / 2, bw, bh);
+            ctx.strokeStyle = strokeCol;
+            ctx.lineWidth = 1.2;
+            ctx.strokeRect(x - bw / 2, y - bh / 2, bw, bh);
+            ctx.fillStyle = "#f0ede6";
+            ctx.font = "700 10px 'JetBrains Mono', monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(title, x, y - 3);
+            ctx.fillStyle = "#7b8496";
+            ctx.font = "500 9px 'JetBrains Mono', monospace";
+            ctx.fillText(sub, x, y + 11);
+          }
+
+          drawNode(leftX, yTop, "WORKER #1", "tokio task", s.color);
+          drawNode(leftX, yBot, "WORKER #2", "bounded pool", "#323a4d");
+          drawNode(midX, yTop, "TLS POOL", "STARTTLS / 465", s.color);
+          drawNode(midX, yBot, "RATE PACER", "300ms ±150ms", "#323a4d");
+          drawNode(rightX, yTop, "MX1 (PREF 10)", s.mx1Down ? "421 DROPPED" : "primary mx", s.mx1Down ? "#ff5449" : s.color);
+          drawNode(rightX, yBot, "MX2 (PREF 20)", s.failover ? "FAILOVER ACTIVE" : "standby mx", s.failover ? "#ff9f1c" : "#323a4d");
+          ctx.textAlign = "left";
+
+          if (!reduceMotion) {
+            animTick++;
+            requestAnimationFrame(drawScope);
+          }
+        }
+        requestAnimationFrame(drawScope);
+
+        /* -----------------------------------------------------------
+         * Section 01: Interactive 5-Phase Pipeline Inspector
+         * ----------------------------------------------------------- */
+        var PIPELINE_STAGES = [
+          {
+            phase: "PHASE 01 // DNS & SECURITY RECON",
+            crate: "src/dns.rs · hickory-resolver",
+            title: "Concurrent MX, SPF, DMARC & Provider Fingerprinting",
+            desc: "Before opening a single TCP socket, rcptx resolves MX records sorted by preference while fetching apex SPF (v=spf1) and _dmarc TXT posture concurrently within a bounded 5-second timeout. Null MX (RFC 7505 '.') is honored; missing MX falls back to the implicit A record per RFC 5321 §5.1.",
+            specs: [
+              ["Custom Resolver", "--dns-server <IP> (2s fast-fail)"],
+              ["Fingerprint Table", "55 needles across 4 categories"],
+              ["Null-MX Guard", "RFC 7505 '.' skips dead domains"],
+              ["DNS-Only Mode", "rcptx mx <domain> (0 SMTP packets)"]
+            ],
+            code: "MX        10 aspmx.l.google.com  |  20 alt1.aspmx.l.google.com\nProvider  Google Workspace  (needle \"google.com\" matched MX host)\nSPF       v=spf1 include:_spf.google.com ~all\nDMARC     v=DMARC1; p=quarantine"
+          },
+          {
+            phase: "PHASE 02 // CATCH-ALL PREFLIGHT",
+            crate: "src/scanner.rs · uuid v4",
+            title: "Trap Catch-All Mailboxes Before Wasting Probes",
+            desc: "By default, rcptx sends --catch-all-probes 2 probes to randomized UUID v4 local-parts (e.g. 9f12...probe@domain). If every preflight probe returns 250/251, the domain is flagged catch-all: subsequent hits become accepted_catch_all, or --stop-on-catch-all halts candidate scanning immediately.",
+            specs: [
+              ["Probe Address", "{uuid::v4().simple()}.probe@{domain}"],
+              ["Default Budget", "2 probes (0 disables, max 16)"],
+              ["Strict Rule", "All preflight probes must return 250/251"],
+              ["Early Exit", "--stop-on-catch-all skips dictionary"]
+            ],
+            code: "[catch-all 1/2] >>> RCPT TO:<4b9a32e10a7f...probe@target.tld>\n[catch-all 1/2] <<< 250 2.1.5 Ok\n[catch-all 2/2] >>> RCPT TO:<c81409fd2e11...probe@target.tld>\n[catch-all 2/2] <<< 250 2.1.5 Ok\n=> catch_all = Some(true) · marking hits accepted_catch_all"
+          },
+          {
+            phase: "PHASE 03 // RSET SESSION MULTIPLEXING",
+            crate: "src/smtp/client.rs · tokio-rustls",
+            title: "Batch Probes on One TLS Session, Reconnect on Drop",
+            desc: "Instead of performing a fresh TCP+TLS handshake per email address, each worker executes MAIL FROM → RCPT TO → RSET for up to --max-rcpt-per-conn (default 5) candidates. If the MX drops with 421 or EOF mid-batch, Prober transparently reconnects (failing over to backup MX hosts) and resumes from the exact failed candidate.",
+            specs: [
+              ["Default Reuse", "5 RCPT probes per connection"],
+              ["TLS Stack", "rustls + rustls-rustcrypto (no C deps)"],
+              ["STARTTLS Modes", "opportunistic · required · disabled"],
+              ["Implicit TLS", "Port 465 auto-negotiates direct TLS"]
+            ],
+            code: ">>> EHLO mta-a4f19c.probe.local\n<<< 250-STARTTLS\n>>> STARTTLS  -->  TLSv1.3 handshake (webpki-roots)\n>>> MAIL FROM:<probe@example.com>\n>>> RCPT TO:<careers@acme.com>   <<< 250 2.1.5 OK\n>>> RSET                          <<< 250 2.0.0 Flushed"
+          },
+          {
+            phase: "PHASE 04 // RFC 3463 VERDICT ENGINE",
+            crate: "src/scanner.rs · src/smtp/parser.rs",
+            title: "Seven Exact Verdicts Beyond Raw 3-Digit Codes",
+            desc: "Multi-line SMTP replies are parsed for both the final 3-digit reply code and any embedded RFC 3463 enhanced status code (e.g. 5.1.1, 5.7.1, 4.7.1) while ignoring IPs and version strings. Rejections at MAIL FROM are cleanly separated as policy_blocked so sender reputation never masquerades as an invalid mailbox.",
+            specs: [
+              ["Enhanced Parser", "Extracts [2|4|5].subject.detail tokens"],
+              ["Policy Rules", "MAIL FROM 5xx, 5.7.x, 13 keyword hints"],
+              ["Hard Bounces", "5.1.1 / 5.1.2 / 5.1.10 → rejected"],
+              ["Greylist Loop", "4xx triggers --retry-greylist rounds"]
+            ],
+            code: "if stage == Stage::MailFrom { return PolicyBlocked / Temporary; }\n5.7.x | POLICY_HINTS  => ProbeStatus::PolicyBlocked,\n5.1.1 | 5.1.2 | 5.1.10 => ProbeStatus::Rejected,\n250 | 251 (catch-all) => ProbeStatus::AcceptedCatchAll"
+          },
+          {
+            phase: "PHASE 05 // STREAMING & GRACEFUL DRAIN",
+            crate: "src/output.rs · src/main.rs",
+            title: "Stream JSONL/CSV Live or Drain Safely on Ctrl+C",
+            desc: "Finalized probes emit immediately to JSONL or CSV sinks as workers finish, while TTY progress bars auto-hide when stdout is piped or machine formats are selected. Pressing Ctrl+C once drains in-flight probes and prints partial reports; pressing twice aborts immediately.",
+            specs: [
+              ["Machine Formats", "json · jsonl (live) · csv (live)"],
+              ["Human Table", "UTF-8 box drawing via comfy-table"],
+              ["Filter Flag", "--only-accepted keeps hits only"],
+              ["Exit Policy", "0 OK/Ctrl+C · 1 Err · 2 Port 25 blocked"]
+            ],
+            code: "^C interrupt received — draining in-flight probes (partial results will be printed)\nSummary: 14 probe(s) across 1 domain(s) — 2 accepted · 11 rejected · 1 temporary\nrcptx finished: 1 domain(s), 14 probe(s) in 4.3s"
+          }
+        ];
+
+        var pipelineDetail = document.getElementById("pipeline-detail");
+        function renderPipelineStage(idx) {
+          var s = PIPELINE_STAGES[idx];
+          var specsHtml = s.specs.map(function (sp) {
+            return '<div class="pd-spec"><b>' + escapeHtml(sp[0]) + "</b><span>" + escapeHtml(sp[1]) + "</span></div>";
+          }).join("");
+          pipelineDetail.innerHTML =
+            '<div>' +
+            '<div class="pd-header"><span class="pd-phase">' + escapeHtml(s.phase) + '</span><span class="pd-crate">' + escapeHtml(s.crate) + "</span></div>" +
+            '<h3 class="pd-title" style="margin-top:0.9rem">' + escapeHtml(s.title) + "</h3>" +
+            '<p class="pd-desc">' + escapeHtml(s.desc) + "</p>" +
+            "</div>" +
+            '<div class="pd-specs">' + specsHtml + "</div>" +
+            '<pre class="pd-code">' + escapeHtml(s.code) + "</pre>";
+        }
+
+        document.querySelectorAll(".p-step").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            document.querySelectorAll(".p-step").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            renderPipelineStage(Number(btn.dataset.stage));
+          });
+        });
+        renderPipelineStage(0);
+
+        /* -----------------------------------------------------------
+         * Section 02: Live RFC 3463 Classifier Lab
+         * ----------------------------------------------------------- */
+        var simStage = document.getElementById("sim-stage");
+        var simCode = document.getElementById("sim-code");
+        var simEsc = document.getElementById("sim-esc");
+        var simCatchAll = document.getElementById("sim-catchall");
+        var simText = document.getElementById("sim-text");
+        var simChip = document.getElementById("sim-verdict-chip");
+        var simOutStage = document.getElementById("sim-out-stage");
+        var simOutCode = document.getElementById("sim-out-code");
+        var simTrace = document.getElementById("sim-trace");
+        var simFormatOut = document.getElementById("sim-format-out");
+        var activeFormat = "json";
+
+        var LAB_PRESETS = {
+          ok: { stage: "rcpt-to", code: 250, esc: "2.1.5", catchAll: "false", text: "2.1.5 Recipient OK" },
+          catchall: { stage: "rcpt-to", code: 250, esc: "2.1.5", catchAll: "true", text: "2.1.5 OK" },
+          unknown: { stage: "rcpt-to", code: 550, esc: "5.1.1", catchAll: "false", text: "<nobody@acme.com>: Recipient address rejected: User unknown" },
+          greylist: { stage: "rcpt-to", code: 450, esc: "4.7.1", catchAll: "false", text: "4.7.1 Greylisted, try again later" },
+          rbl: { stage: "rcpt-to", code: 550, esc: "5.7.1", catchAll: "false", text: "5.7.1 Service unavailable; client blocked using Spamhaus DNSBL" },
+          mailfrom: { stage: "mail-from", code: 554, esc: "5.7.1", catchAll: "false", text: "Sender address rejected by anti-enumeration policy" },
+          vrfy: { stage: "rcpt-to", code: 252, esc: "", catchAll: "false", text: "Cannot VRFY user, but will accept message" },
+          timeout: { stage: "tcp-connect", code: 0, esc: "", catchAll: "false", text: "TCP connect to mx1.acme.com:25 timed out after 10s" }
+        };
+
+        function parseEnhancedJS(str) {
+          var tokens = String(str || "").trim().split(/\s+/);
+          for (var i = 0; i < tokens.length; i++) {
+            var cleaned = tokens[i].replace(/^[^a-zA-Z0-9.]+|[^a-zA-Z0-9.]+$/g, "");
+            var parts = cleaned.split(".");
+            if (parts.length !== 3 || parts[0].length !== 1) continue;
+            var c = Number(parts[0]), s = Number(parts[1]), d = Number(parts[2]);
+            if (Number.isInteger(c) && Number.isInteger(s) && Number.isInteger(d) && (c === 2 || c === 4 || c === 5)) {
+              return { cls: c, subject: s, detail: d, str: c + "." + s + "." + d };
+            }
+          }
+          return null;
+        }
+
+        function classifyExact(stage, code, escStr, catchAllBool, text) {
+          if (stage === "tcp-connect") {
+            return { status: "error", reason: "No SMTP reply received during tcp-connect → classified as transport error." };
+          }
+          if (stage === "mail-from") {
+            if (code >= 500) {
+              return { status: "policy_blocked", reason: "Rejected at MAIL FROM before naming any recipient (code >= 500) → sender-stage policy_blocked." };
+            }
+            return { status: "temporary", reason: "Transient code at MAIL FROM stage → classified temporary for retry." };
+          }
+
+          var esc = parseEnhancedJS(escStr) || parseEnhancedJS(text);
+          if ((code === 250 || code === 251) && catchAllBool) {
+            return { status: "accepted_catch_all", reason: "Reply code " + code + " with catch_all=true → flagged accepted_catch_all." };
+          }
+          if (code === 250 || code === 251) {
+            return { status: "accepted", reason: "Reply code " + code + " on non-catch-all domain → mailbox accepted." };
+          }
+          if (code === 252) {
+            return { status: "indeterminate", reason: "Reply code 252 (cannot VRFY, will accept) → indeterminate." };
+          }
+          if (code >= 400 && code <= 499) {
+            return { status: "temporary", reason: "4xx transient response (" + code + ") → temporary (eligible for --retry-greylist)." };
+          }
+          if (code >= 500 && code <= 599) {
+            if (esc && esc.cls === 5 && esc.subject === 7) {
+              return { status: "policy_blocked", reason: "Enhanced status code " + esc.str + " (class 5, subject 7) → policy_blocked." };
+            }
+            if (esc && esc.cls === 5 && esc.subject === 1 && (esc.detail === 1 || esc.detail === 2 || esc.detail === 10)) {
+              return { status: "rejected", reason: "Enhanced status code " + esc.str + " (5.1." + esc.detail + " mailbox invalid) → rejected." };
+            }
+            var lower = text.toLowerCase();
+            for (var i = 0; i < POLICY_HINTS.length; i++) {
+              if (lower.indexOf(POLICY_HINTS[i]) !== -1) {
+                return { status: "policy_blocked", reason: "Reply text matched POLICY_HINTS token \"" + POLICY_HINTS[i] + "\" → policy_blocked." };
+              }
+            }
+            return { status: "rejected", reason: "5xx reply at RCPT TO without policy markers → defaults to rejected." };
+          }
+          return { status: "indeterminate", reason: "Unclassified reply code " + code + " → fallback to indeterminate." };
+        }
+
+        function updateLab() {
+          var stage = simStage.value;
+          var code = stage === "tcp-connect" ? null : Math.max(200, Math.min(599, Number(simCode.value) || 250));
+          var escParsed = stage === "tcp-connect" ? null : (parseEnhancedJS(simEsc.value) || parseEnhancedJS(simText.value));
+          var catchAllBool = simCatchAll.value === "true";
+          var rawText = simText.value || (code ? "SMTP " + code : "connection failed");
+
+          simCode.disabled = stage === "tcp-connect";
+          simEsc.disabled = stage === "tcp-connect";
+
+          var res = classifyExact(stage, code || 0, simEsc.value, catchAllBool, rawText);
+          simChip.className = "chip " + res.status;
+          simChip.textContent = res.status;
+          simOutStage.textContent = stage;
+          simOutCode.textContent = code ? (code + (escParsed ? " · " + escParsed.str : "")) : "none (EOF/timeout)";
+          simTrace.textContent = res.reason;
+
+          var msg = stage === "mail-from" ? "rejected at MAIL FROM: " + rawText : rawText;
+          var record = {
+            domain: "acme.com",
+            local_part: "careers",
+            email: "careers@acme.com",
+            status: res.status,
+            smtp_code: code,
+            enhanced_code: escParsed ? escParsed.str : null,
+            stage: stage,
+            message: msg,
+            mx_host: "aspmx.l.google.com",
+            attempts: res.status === "temporary" ? 2 : 1,
+            latency_ms: stage === "tcp-connect" ? null : 128
+          };
+
+          if (activeFormat === "json") {
+            simFormatOut.textContent = JSON.stringify(record, null, 2);
+          } else if (activeFormat === "jsonl") {
+            simFormatOut.textContent = JSON.stringify(record);
+          } else if (activeFormat === "csv") {
+            var header = "domain,local_part,email,status,smtp_code,enhanced_code,stage,message,mx_host,attempts,latency_ms";
+            var row = [
+              record.domain, record.local_part, record.email, record.status,
+              record.smtp_code == null ? "" : record.smtp_code,
+              record.enhanced_code || "",
+              record.stage,
+              '"' + record.message.replace(/"/g, '""') + '"',
+              record.mx_host, record.attempts,
+              record.latency_ms == null ? "" : record.latency_ms
+            ].join(",");
+            simFormatOut.textContent = header + "\n" + row;
+          } else {
+            var statusLbl = res.status === "accepted_catch_all" ? "accepted*" : res.status;
+            simFormatOut.textContent =
+              "┌──────────────────┬────────────┬──────┬───────┬─────┬─────┬──────────────────────────┐\n" +
+              "│ Email            ┆ Status     ┆ Code ┆ ESC   ┆ Try ┆ ms  ┆ Message                  │\n" +
+              "╞══════════════════╪════════════╪══════╪═══════╪═════╪═════╪══════════════════════════╡\n" +
+              "│ careers@acme.com ┆ " + pad(statusLbl, 10) + " ┆ " + pad(record.smtp_code || "-", 4) + " ┆ " +
+              pad(record.enhanced_code || "-", 5) + " ┆ " + pad(record.attempts, 3) + " ┆ " +
+              pad(record.latency_ms == null ? "-" : record.latency_ms, 3) + " ┆ " +
+              pad(record.message.slice(0, 24), 24) + " │\n" +
+              "└──────────────────┴────────────┴──────┴───────┴─────┴─────┴──────────────────────────┘";
+          }
+        }
+
+        function pad(val, len) {
+          var s = String(val);
+          while (s.length < len) s += " ";
+          return s.slice(0, len);
+        }
+
+        document.querySelectorAll("#lab-presets .pill-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            document.querySelectorAll("#lab-presets .pill-btn").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            var p = LAB_PRESETS[btn.dataset.preset];
+            simStage.value = p.stage;
+            simCode.value = p.code;
+            simEsc.value = p.esc;
+            simCatchAll.value = p.catchAll;
+            simText.value = p.text;
+            updateLab();
+          });
+        });
+
+        [simStage, simCode, simEsc, simCatchAll, simText].forEach(function (el) {
+          el.addEventListener("input", updateLab);
+          el.addEventListener("change", updateLab);
+        });
+
+        document.querySelectorAll(".format-tab").forEach(function (tab) {
+          tab.addEventListener("click", function () {
+            document.querySelectorAll(".format-tab").forEach(function (t) { t.classList.remove("active"); });
+            tab.classList.add("active");
+            activeFormat = tab.dataset.fmt;
+            updateLab();
+          });
+        });
+        updateLab();
+
+        /* -----------------------------------------------------------
+         * Section 03: 55-Needle Provider Fingerprint Atlas & Live Matcher
+         * ----------------------------------------------------------- */
+        var mxProbeInput = document.getElementById("mx-probe-input");
+        var mxMatchOutput = document.getElementById("mx-match-output");
+        var atlasTbody = document.getElementById("atlas-tbody");
+        var atlasSearch = document.getElementById("atlas-search");
+        var activeCat = "all";
+        var matchedNeedle = null;
+
+        function detectProviderLive(raw) {
+          var lower = (raw || "").trim().toLowerCase();
+          if (!lower) return null;
+          var isSpf = lower.indexOf("v=spf1") !== -1 || lower.indexOf("include:") !== -1;
+          for (var i = 0; i < PROVIDER_FINGERPRINTS.length; i++) {
+            var fp = PROVIDER_FINGERPRINTS[i];
+            if (lower.indexOf(fp.needle) !== -1) {
+              return { fp: fp, idx: i + 1, source: isSpf ? "SPF record" : "MX host " + lower };
+            }
+          }
+          return null;
+        }
+
+        function catBadgeClass(cat) {
+          if (cat === "cloud suite") return "cloud";
+          return cat;
+        }
+
+        function renderAtlas() {
+          var q = (atlasSearch.value || "").trim().toLowerCase();
+          var rows = [];
+          for (var i = 0; i < PROVIDER_FINGERPRINTS.length; i++) {
+            var fp = PROVIDER_FINGERPRINTS[i];
+            if (activeCat !== "all" && fp.cat !== activeCat) continue;
+            if (q && fp.needle.indexOf(q) === -1 && fp.provider.toLowerCase().indexOf(q) === -1 && fp.cat.indexOf(q) === -1) continue;
+            var isMatched = matchedNeedle === fp.needle;
+            rows.push(
+              '<tr class="' + (isMatched ? "matched-row" : "") + '">' +
+                '<td class="tnum mono" style="color:var(--muted)">' + String(i + 1).padStart(2, "0") + "</td>" +
+                '<td><span class="cat-tag ' + catBadgeClass(fp.cat) + '">' + escapeHtml(fp.cat) + "</span></td>" +
+                '<td><code style="color:' + (isMatched ? "var(--lime)" : "var(--ink)") + '">' + escapeHtml(fp.needle) + "</code></td>" +
+                "<td>" + escapeHtml(fp.provider) + (isMatched ? ' <span style="color:var(--lime);font-family:var(--mono);font-size:0.7rem">[MATCH]</span>' : "") + "</td>" +
+              "</tr>"
+            );
+          }
+          atlasTbody.innerHTML = rows.length
+            ? rows.join("")
+            : '<tr><td colspan="4" class="mono" style="color:var(--muted);text-align:center;padding:1.5rem">No fingerprints matched "' + escapeHtml(q) + '"</td></tr>';
+        }
+
+        function updateMatcher() {
+          var val = mxProbeInput.value;
+          var match = detectProviderLive(val);
+          if (match) {
+            matchedNeedle = match.fp.needle;
+            mxMatchOutput.innerHTML =
+              '<div style="color:var(--muted)">PROVENANCE RESULT</div>' +
+              '<div>Provider  <strong style="color:var(--lime)">' + escapeHtml(match.fp.provider) + '</strong> <span class="cat-tag ' + catBadgeClass(match.fp.cat) + '" style="margin-left:0.4rem">' + escapeHtml(match.fp.cat) + '</span></div>' +
+              '<div style="color:var(--ink-2)">Matched   needle "' + escapeHtml(match.fp.needle) + '" (rule #' + match.idx + ') matched ' + escapeHtml(match.source) + "</div>";
+          } else {
+            matchedNeedle = null;
+            mxMatchOutput.innerHTML =
+              '<div style="color:var(--muted)">PROVENANCE RESULT</div>' +
+              '<div>Provider  <span style="color:var(--amber)">(unrecognized)</span></div>' +
+              '<div style="color:var(--muted)">No built-in needle matched "' + escapeHtml(val || "") + '"</div>';
+          }
+          renderAtlas();
+        }
+
+        mxProbeInput.addEventListener("input", updateMatcher);
+        document.querySelectorAll(".matcher-samples .pill-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            mxProbeInput.value = btn.dataset.sample;
+            updateMatcher();
+          });
+        });
+
+        document.querySelectorAll("#atlas-filters .pill-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            document.querySelectorAll("#atlas-filters .pill-btn").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            activeCat = btn.dataset.cat;
+            renderAtlas();
+          });
+        });
+        atlasSearch.addEventListener("input", renderAtlas);
+        updateMatcher();
+
+        /* -----------------------------------------------------------
+         * Section 04: CLI Workbench & Presets + Recipes
+         * ----------------------------------------------------------- */
+        var wbState = {
+          target: "single",
+          presets: ["hr", "general"],
+          inspectedPreset: "hr",
+          flags: {
+            stopCatchAll: false,
+            onlyAccepted: false,
+            autoMailFrom: false,
+            randomEhlo: false,
+            verbose: false
+          }
+        };
+
+        var wbConc = document.getElementById("wb-conc");
+        var wbMaxRcpt = document.getElementById("wb-maxrcpt");
+        var wbStarttls = document.getElementById("wb-starttls");
+        var wbFormat = document.getElementById("wb-format");
+        var wbCmdOut = document.getElementById("wb-cmd-out");
+        var effCandidates = document.getElementById("eff-candidates");
+        var effHandshakes = document.getElementById("eff-handshakes");
+        var effSavings = document.getElementById("eff-savings");
+        var presetInspectorTitle = document.getElementById("preset-inspector-title");
+        var presetInspectorWords = document.getElementById("preset-inspector-words");
+
+        function renderPresetInspector(name) {
+          var key = name === "all" ? "hr" : name;
+          var list = PRESETS[key] || PRESETS.hr;
+          presetInspectorTitle.textContent = "PRESET [" + key.toUpperCase() + "] — " + list.length + " LOCAL-PARTS";
+          presetInspectorWords.innerHTML = list.map(function (w) {
+            return '<span class="preset-word">' + escapeHtml(w) + "</span>";
+          }).join("");
+        }
+
+        function updateWorkbench() {
+          var parts = ["rcptx"];
+          if (wbState.target === "single") parts.push("-d acme.com");
+          else if (wbState.target === "file") parts.push("-D targets.txt");
+          else parts.splice(0, 1, "cat domains.txt | rcptx --stdin");
+
+          var pSpec = wbState.presets.slice();
+          if (pSpec.length === 0) pSpec = ["hr", "general"];
+          if (!(pSpec.length === 2 && pSpec[0] === "hr" && pSpec[1] === "general")) {
+            parts.push("-p " + pSpec.join(","));
+          }
+
+          var conc = Number(wbConc.value);
+          var maxRcpt = Number(wbMaxRcpt.value);
+          if (conc !== 2) parts.push("-c " + conc);
+          if (maxRcpt !== 5) parts.push("--max-rcpt-per-conn " + maxRcpt);
+          if (wbStarttls.value !== "opportunistic") parts.push("--starttls " + wbStarttls.value);
+          if (wbFormat.value !== "table") parts.push("--format " + wbFormat.value);
+          if (wbState.flags.stopCatchAll) parts.push("--stop-on-catch-all");
+          if (wbState.flags.onlyAccepted) parts.push("--only-accepted");
+          if (wbState.flags.autoMailFrom) parts.push("--auto-mail-from");
+          if (wbState.flags.randomEhlo) parts.push("--random-ehlo");
+          if (wbState.flags.verbose) parts.push("-v");
+
+          wbCmdOut.textContent = parts.join(" ");
+
+          // Compute exact local-part count from selected presets
+          var totalCand = 0;
+          if (pSpec.indexOf("all") !== -1) {
+            totalCand = 46;
+          } else {
+            pSpec.forEach(function (p) {
+              if (PRESETS[p]) totalCand += PRESETS[p].length;
+            });
+          }
+          var handshakes = Math.ceil(totalCand / maxRcpt);
+          var savings = totalCand > 0 ? Math.max(0, Math.round(((totalCand - handshakes) / totalCand) * 100)) : 0;
+          effCandidates.textContent = String(totalCand);
+          effHandshakes.textContent = "~" + handshakes;
+          effSavings.textContent = savings + "%";
+        }
+
+        document.querySelectorAll("#wb-target-mode .pill-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            document.querySelectorAll("#wb-target-mode .pill-btn").forEach(function (b) { b.classList.remove("active"); });
+            btn.classList.add("active");
+            wbState.target = btn.dataset.target;
+            updateWorkbench();
+          });
+        });
+
+        document.querySelectorAll("#wb-presets .pill-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var p = btn.dataset.p;
+            if (p === "all") {
+              wbState.presets = ["all"];
+            } else {
+              wbState.presets = wbState.presets.filter(function (x) { return x !== "all"; });
+              var idx = wbState.presets.indexOf(p);
+              if (idx !== -1 && wbState.presets.length > 1) {
+                wbState.presets.splice(idx, 1);
+              } else if (idx === -1) {
+                wbState.presets.push(p);
+              }
+            }
+            document.querySelectorAll("#wb-presets .pill-btn").forEach(function (b) {
+              b.classList.toggle("active", wbState.presets.indexOf(b.dataset.p) !== -1);
+            });
+            renderPresetInspector(p);
+            updateWorkbench();
+          });
+        });
+
+        document.querySelectorAll("#wb-flags .pill-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var f = btn.dataset.flag;
+            wbState.flags[f] = !wbState.flags[f];
+            btn.classList.toggle("active", wbState.flags[f]);
+            updateWorkbench();
+          });
+        });
+
+        [wbConc, wbMaxRcpt, wbStarttls, wbFormat].forEach(function (el) {
+          el.addEventListener("change", updateWorkbench);
+        });
+        renderPresetInspector("hr");
+        updateWorkbench();
+
+        /* Recipes */
+        var RECIPES = {
+          recon: "# HR + executive hunt across a domain list, JSON report of accepted hits only\nrcptx -D targets.txt -p hr,executive --only-accepted --format json -o hits.json",
+          stream: "# Stream accepted addresses live as CSV with plausible randomized sender & custom DNS\ncat domains.txt | rcptx --stdin -l careers,people,ceo \\\n    --auto-mail-from --dns-server 1.1.1.1 --format csv",
+          hardened: "# Cautious scan of a hardened target: slow pacing, no catch-all waste, greylist retries\nrcptx -d strict-corp.com -p all -c 1 --delay-ms 2000 --jitter-ms 800 \\\n    --max-rcpt-per-conn 3 --stop-on-catch-all --retry-greylist 2 --retry-delay 30",
+          dns: "# DNS-only posture recon (zero SMTP traffic) + inspect fingerprint needles\nrcptx mx fastmail.com -v\nrcptx providers --category gateway",
+          debug: "# Inspect raw SMTP wire transcript (>>> MAIL FROM, <<< 250 2.1.5 ...)\nrcptx -d acme.com -l info --catch-all-probes 1 -v\n\n# Compare local binary with latest GitHub release\nrcptx check-update"
+        };
+
+        var recipePre = document.getElementById("recipe-pre");
+        document.querySelectorAll("#recipe-tabs .install-tab").forEach(function (tab) {
+          tab.addEventListener("click", function () {
+            document.querySelectorAll("#recipe-tabs .install-tab").forEach(function (t) { t.classList.remove("active"); });
+            tab.classList.add("active");
+            recipePre.textContent = RECIPES[tab.dataset.recipe] || RECIPES.recon;
+          });
+        });
+        recipePre.textContent = RECIPES.recon;
+
+        /* -----------------------------------------------------------
+         * Command Palette (Ctrl+K / Cmd+K / /)
+         * ----------------------------------------------------------- */
+        var PALETTE_ACTIONS = [
+          { label: "Jump to 01 // Protocol Pipeline", hint: "#pipeline", run: function () { jumpTo("#pipeline"); } },
+          { label: "Jump to 02 // RFC 3463 Verdict Lab", hint: "#verdict-lab", run: function () { jumpTo("#verdict-lab"); } },
+          { label: "Jump to 03 // 55-Needle Fingerprint Atlas", hint: "#fingerprints", run: function () { jumpTo("#fingerprints"); } },
+          { label: "Jump to 04 // CLI Command Workbench", hint: "#workbench", run: function () { jumpTo("#workbench"); } },
+          { label: "Jump to 05 // Static Binary Releases", hint: "#releases", run: function () { jumpTo("#releases"); } },
+          { label: "Copy Cargo Install Command", hint: "clipboard", run: function () { copyText(INSTALL_SNIPPETS.cargo); } },
+          { label: "Simulate 550 5.7.1 Policy Block in Verdict Lab", hint: "lab", run: function () { jumpTo("#verdict-lab"); document.querySelector('#lab-presets [data-preset="rbl"]').click(); } },
+          { label: "Simulate 421 MX Failover in Hero Oscilloscope", hint: "scope", run: function () { jumpTo("#top"); document.querySelector('.scenario-btn[data-scenario="failover"]').click(); } },
+          { label: "Open GitHub Repository", hint: "external", run: function () { window.open("https://github.com/sametcn99/rcptx", "_blank", "noopener"); } }
+        ];
+
+        var paletteBackdrop = document.getElementById("palette-backdrop");
+        var paletteInput = document.getElementById("palette-input");
+        var paletteList = document.getElementById("palette-list");
+        var paletteSelected = 0;
+        var filteredPalette = PALETTE_ACTIONS.slice();
+
+        function jumpTo(hash) {
+          var target = document.querySelector(hash);
+          if (target) target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
+        }
+
+        function renderPalette() {
+          var q = (paletteInput.value || "").trim().toLowerCase();
+          filteredPalette = PALETTE_ACTIONS.filter(function (a) {
+            return !q || a.label.toLowerCase().indexOf(q) !== -1 || a.hint.toLowerCase().indexOf(q) !== -1;
+          });
+          if (paletteSelected >= filteredPalette.length) paletteSelected = Math.max(0, filteredPalette.length - 1);
+          paletteList.innerHTML = filteredPalette.map(function (a, i) {
+            return '<button class="palette-item' + (i === paletteSelected ? " selected" : "") + '" data-idx="' + i + '" type="button">' +
+              "<span>" + escapeHtml(a.label) + "</span><small>" + escapeHtml(a.hint) + "</small></button>";
+          }).join("");
+          paletteList.querySelectorAll(".palette-item").forEach(function (item) {
+            item.addEventListener("click", function () {
+              var act = filteredPalette[Number(item.dataset.idx)];
+              closePalette();
+              if (act) act.run();
+            });
+          });
+        }
+
+        function openPalette() {
+          paletteBackdrop.classList.add("open");
+          paletteInput.value = "";
+          paletteSelected = 0;
+          renderPalette();
+          setTimeout(function () { paletteInput.focus(); }, 20);
+        }
+
+        function closePalette() {
+          paletteBackdrop.classList.remove("open");
+        }
+
+        document.getElementById("open-palette").addEventListener("click", openPalette);
+        paletteBackdrop.addEventListener("click", function (e) {
+          if (e.target === paletteBackdrop) closePalette();
+        });
+        paletteInput.addEventListener("input", function () {
+          paletteSelected = 0;
+          renderPalette();
+        });
+
+        document.addEventListener("keydown", function (e) {
+          var activeTag = document.activeElement ? document.activeElement.tagName : "";
+          var isTyping = activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT";
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+            e.preventDefault();
+            paletteBackdrop.classList.contains("open") ? closePalette() : openPalette();
+            return;
+          }
+          if (e.key === "/" && !isTyping && !paletteBackdrop.classList.contains("open")) {
+            e.preventDefault();
+            openPalette();
+            return;
+          }
+          if (!paletteBackdrop.classList.contains("open")) return;
+          if (e.key === "Escape") {
+            closePalette();
+          } else if (e.key === "ArrowDown") {
+            e.preventDefault();
+            if (filteredPalette.length) paletteSelected = (paletteSelected + 1) % filteredPalette.length;
+            renderPalette();
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            if (filteredPalette.length) paletteSelected = (paletteSelected - 1 + filteredPalette.length) % filteredPalette.length;
+            renderPalette();
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            var act = filteredPalette[paletteSelected];
+            closePalette();
+            if (act) act.run();
+          }
+        });
+
+        function escapeHtml(str) {
+          return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+      })();
     </script>
   </body>
 </html>
